@@ -8,12 +8,17 @@
     "dev": "tsx watch src/index.ts",
     "lint": "eslint . --ext .ts",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "db:setup": "tsx src/database/supabase/migrations/run.ts",
+    "db:start": "supabase start",
+    "db:stop": "supabase stop",
+    "db:reset": "supabase db reset"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@supabase/supabase-js": "^2.48.1",
     "dotenv": "^16.4.5",
     "ethers": "^6.11.1"
   },
