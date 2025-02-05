@@ -44,7 +44,9 @@ export class DatabaseWrapper implements IDatabase {
     return this.db.updateCheckpoint(checkpoint);
   }
 
-  async getCheckpoint(componentType: string): Promise<ProcessingCheckpoint | null> {
+  async getCheckpoint(
+    componentType: string,
+  ): Promise<ProcessingCheckpoint | null> {
     return this.db.getCheckpoint(componentType);
   }
 }

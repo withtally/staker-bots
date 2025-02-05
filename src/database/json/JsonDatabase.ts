@@ -49,7 +49,7 @@ export class JsonDatabase implements IDatabase {
 
   async getDepositsByDelegatee(delegateeAddress: string): Promise<Deposit[]> {
     return Object.values(this.data.deposits).filter(
-      (deposit) => deposit.delegatee_address === delegateeAddress
+      (deposit) => deposit.delegatee_address === delegateeAddress,
     );
   }
 
@@ -62,7 +62,9 @@ export class JsonDatabase implements IDatabase {
     await this.saveToFile();
   }
 
-  async getCheckpoint(componentType: string): Promise<ProcessingCheckpoint | null> {
+  async getCheckpoint(
+    componentType: string,
+  ): Promise<ProcessingCheckpoint | null> {
     return this.data.checkpoints[componentType] || null;
   }
 }

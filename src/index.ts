@@ -8,7 +8,7 @@ async function main() {
   await db.createDeposit({
     deposit_id: '123',
     owner_address: '0x...',
-    delegatee_address: '0x...'
+    delegatee_address: '0x...',
   });
 }
 

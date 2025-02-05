@@ -11,6 +11,6 @@ export const CONFIG = {
   supabase: {
     url: process.env.SUPABASE_URL,
     key: process.env.SUPABASE_KEY,
-    db: process.env.DB
+    db: process.env.DB,
   },
 } as const;

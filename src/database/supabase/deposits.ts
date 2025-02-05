@@ -16,7 +16,9 @@ export async function getDeposit(depositId: string): Promise<Deposit | null> {
   return data;
 }
 
-export async function getDepositsByDelegatee(delegateeAddress: string): Promise<Deposit[]> {
+export async function getDepositsByDelegatee(
+  delegateeAddress: string,
+): Promise<Deposit[]> {
   const { data, error } = await supabase
     .from('deposits')
     .select()
