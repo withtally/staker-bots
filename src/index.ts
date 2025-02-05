@@ -1,11 +1,15 @@
-import { config } from 'dotenv';
-
-// Load environment variables
-config();
+import { DatabaseWrapper } from './database';
 
 async function main() {
   console.warn('Starting staker bot...');
-  // Your main logic here
+
+  const db = new DatabaseWrapper();
+
+  await db.createDeposit({
+    deposit_id: '123',
+    owner_address: '0x...',
+    delegatee_address: '0x...'
+  });
 }
 
 main().catch((error) => {
