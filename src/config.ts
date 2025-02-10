@@ -27,6 +27,9 @@ export const CONFIG = {
     rpcUrl: process.env.RPC_URL!,
     chainId: parseInt(process.env.CHAIN_ID || '42161'),
     stakerAddress: process.env.STAKER_CONTRACT_ADDRESS!,
+    arbTokenAddress: process.env.ARB_TOKEN_ADDRESS || '',
+    rewardCalculatorAddress: process.env.REWARD_CALCULATOR_ADDRESS || '',
+    rewardNotifierAddress: process.env.REWARD_NOTIFIER_ADDRESS || '',
     startBlock: parseInt(process.env.START_BLOCK || '0'),
     logLevel: (process.env.LOG_LEVEL || 'info') as
       | 'debug'
