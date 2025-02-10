@@ -3,10 +3,10 @@ import { IDatabase, ProcessingCheckpoint } from '@/database';
 
 export interface MonitorConfig {
   provider: ethers.Provider;
-  stakerAddress: string,
-  arbTokenAddress: string,
-  rewardCalculatorAddress: string,
-  rewardNotifierAddress: string,
+  stakerAddress: string;
+  arbTokenAddress: string;
+  rewardCalculatorAddress: string;
+  rewardNotifierAddress: string;
   networkName: string;
   chainId: number;
   startBlock: number;
