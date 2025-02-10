@@ -16,7 +16,7 @@ async function main() {
 
   // Initialize database
   const database = new DatabaseWrapper({
-    type: CONFIG.monitor.databaseType
+    type: CONFIG.monitor.databaseType,
   });
 
   const monitor = new StakerMonitor(createMonitorConfig(provider, database));
@@ -49,13 +49,12 @@ async function main() {
           isRunning: status.isRunning,
           processingLag: status.processingLag,
           currentBlock: status.currentChainBlock,
-          lastProcessedBlock: status.lastProcessedBlock
+          lastProcessedBlock: status.lastProcessedBlock,
         });
       } catch (error) {
         console.error('Health check failed:', error);
       }
     }, CONFIG.monitor.healthCheckInterval * 1000);
-
   } catch (error) {
     console.error('Failed to start monitor:', error);
     process.exit(1);

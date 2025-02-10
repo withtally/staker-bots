@@ -2,7 +2,13 @@ import { ethers } from 'ethers';
 import { IDatabase } from '@/database';
 import { EventProcessor } from './EventProcessor';
 import { ConsoleLogger, Logger } from './logging';
-import { MonitorConfig, MonitorStatus, StakeDepositedEvent, StakeWithdrawnEvent, DelegateeAlteredEvent } from './types';
+import {
+  MonitorConfig,
+  MonitorStatus,
+  StakeDepositedEvent,
+  StakeWithdrawnEvent,
+  DelegateeAlteredEvent,
+} from './types';
 import { STAKER_ABI } from './constants';
 
 export class StakerMonitor {
@@ -20,7 +26,11 @@ export class StakerMonitor {
     this.config = config;
     this.db = config.database;
     this.provider = config.provider;
-    this.contract = new ethers.Contract(config.stakerAddress, STAKER_ABI, config.provider);
+    this.contract = new ethers.Contract(
+      config.stakerAddress,
+      STAKER_ABI,
+      config.provider,
+    );
     this.logger = new ConsoleLogger(config.logLevel);
     this.eventProcessor = new EventProcessor(this.db, this.logger);
     this.isRunning = false;
@@ -37,14 +47,16 @@ export class StakerMonitor {
     this.logger.info('Starting Staker Monitor', {
       network: this.config.networkName,
       chainId: this.config.chainId,
-      address: this.config.stakerAddress
+      address: this.config.stakerAddress,
     });
 
     // Load last checkpoint if exists
     const checkpoint = await this.db.getCheckpoint('staker-monitor');
     if (checkpoint) {
       this.lastProcessedBlock = checkpoint.last_block_number;
-      this.logger.info('Loaded checkpoint', { blockNumber: this.lastProcessedBlock });
+      this.logger.info('Loaded checkpoint', {
+        blockNumber: this.lastProcessedBlock,
+      });
     }
 
     this.processingPromise = this.processLoop();
@@ -69,14 +81,16 @@ export class StakerMonitor {
         const targetBlock = currentBlock - this.config.confirmations;
 
         if (targetBlock <= this.lastProcessedBlock) {
-          await new Promise(resolve => setTimeout(resolve, this.config.pollInterval));
+          await new Promise((resolve) =>
+            setTimeout(resolve, this.config.pollInterval),
+          );
           continue;
         }
 
         const fromBlock = this.lastProcessedBlock + 1;
         const toBlock = Math.min(
           targetBlock,
-          fromBlock + this.config.maxBlockRange - 1
+          fromBlock + this.config.maxBlockRange - 1,
         );
 
         await this.processBlockRange(fromBlock, toBlock);
@@ -88,49 +102,57 @@ export class StakerMonitor {
           component_type: 'staker-monitor',
           last_block_number: toBlock,
           block_hash: block.hash!,
-          last_update: new Date().toISOString()
+          last_update: new Date().toISOString(),
         });
 
         this.lastProcessedBlock = toBlock;
       } catch (error) {
         this.logger.error('Error in processing loop', { error });
-        await new Promise(resolve => setTimeout(resolve, this.config.pollInterval));
+        await new Promise((resolve) =>
+          setTimeout(resolve, this.config.pollInterval),
+        );
       }
     }
   }
 
-  private async processBlockRange(fromBlock: number, toBlock: number): Promise<void> {
+  private async processBlockRange(
+    fromBlock: number,
+    toBlock: number,
+  ): Promise<void> {
     this.logger.debug('Processing block range', { fromBlock, toBlock });
 
-    const [depositedEvents, withdrawnEvents, alteredEvents] = await Promise.all([
-      this.contract.queryFilter(
-        this.contract.filters.StakeDeposited!(),
-        fromBlock,
-        toBlock
-      ),
-      this.contract.queryFilter(
-        this.contract.filters.StakeWithdrawn!(),
-        fromBlock,
-        toBlock
-      ),
-      this.contract.queryFilter(
-        this.contract.filters.DelegateeAltered!(),
-        fromBlock,
-        toBlock
-      )
-    ]);
+    const [depositedEvents, withdrawnEvents, alteredEvents] = await Promise.all(
+      [
+        this.contract.queryFilter(
+          this.contract.filters.StakeDeposited!(),
+          fromBlock,
+          toBlock,
+        ),
+        this.contract.queryFilter(
+          this.contract.filters.StakeWithdrawn!(),
+          fromBlock,
+          toBlock,
+        ),
+        this.contract.queryFilter(
+          this.contract.filters.DelegateeAltered!(),
+          fromBlock,
+          toBlock,
+        ),
+      ],
+    );
 
     // Process events in order
     for (const event of depositedEvents) {
       const typedEvent = event as ethers.EventLog;
-      const { depositId, ownerAddress, delegateeAddress, amount } = typedEvent.args;
+      const { depositId, ownerAddress, delegateeAddress, amount } =
+        typedEvent.args;
       await this.handleStakeDeposited({
         depositId,
         ownerAddress,
         delegateeAddress,
         amount,
         blockNumber: typedEvent.blockNumber!,
-        transactionHash: typedEvent.transactionHash!
+        transactionHash: typedEvent.transactionHash!,
       });
     }
 
@@ -140,7 +162,7 @@ export class StakerMonitor {
       await this.handleStakeWithdrawn({
         depositId,
         blockNumber: typedEvent.blockNumber!,
-        transactionHash: typedEvent.transactionHash!
+        transactionHash: typedEvent.transactionHash!,
       });
     }
 
@@ -152,7 +174,7 @@ export class StakerMonitor {
         oldDelegatee,
         newDelegatee,
         blockNumber: typedEvent.blockNumber!,
-        transactionHash: typedEvent.transactionHash!
+        transactionHash: typedEvent.transactionHash!,
       });
     }
   }
@@ -166,11 +188,17 @@ export class StakerMonitor {
       }
       attempts++;
       if (attempts < this.config.maxRetries) {
-        this.logger.warn(`Retrying StakeDeposited event (attempt ${attempts + 1}/${this.config.maxRetries})`, { event });
-        await new Promise(resolve => setTimeout(resolve, 1000 * attempts)); // Exponential backoff
+        this.logger.warn(
+          `Retrying StakeDeposited event (attempt ${attempts + 1}/${this.config.maxRetries})`,
+          { event },
+        );
+        await new Promise((resolve) => setTimeout(resolve, 1000 * attempts)); // Exponential backoff
       }
     }
-    this.logger.error('Failed to process StakeDeposited event after max retries', { event });
+    this.logger.error(
+      'Failed to process StakeDeposited event after max retries',
+      { event },
+    );
   }
 
   async handleStakeWithdrawn(event: StakeWithdrawnEvent): Promise<void> {
@@ -182,11 +210,17 @@ export class StakerMonitor {
       }
       attempts++;
       if (attempts < this.config.maxRetries) {
-        this.logger.warn(`Retrying StakeWithdrawn event (attempt ${attempts + 1}/${this.config.maxRetries})`, { event });
-        await new Promise(resolve => setTimeout(resolve, 1000 * attempts));
+        this.logger.warn(
+          `Retrying StakeWithdrawn event (attempt ${attempts + 1}/${this.config.maxRetries})`,
+          { event },
+        );
+        await new Promise((resolve) => setTimeout(resolve, 1000 * attempts));
       }
     }
-    this.logger.error('Failed to process StakeWithdrawn event after max retries', { event });
+    this.logger.error(
+      'Failed to process StakeWithdrawn event after max retries',
+      { event },
+    );
   }
 
   async handleDelegateeAltered(event: DelegateeAlteredEvent): Promise<void> {
@@ -198,11 +232,17 @@ export class StakerMonitor {
       }
       attempts++;
       if (attempts < this.config.maxRetries) {
-        this.logger.warn(`Retrying DelegateeAltered event (attempt ${attempts + 1}/${this.config.maxRetries})`, { event });
-        await new Promise(resolve => setTimeout(resolve, 1000 * attempts));
+        this.logger.warn(
+          `Retrying DelegateeAltered event (attempt ${attempts + 1}/${this.config.maxRetries})`,
+          { event },
+        );
+        await new Promise((resolve) => setTimeout(resolve, 1000 * attempts));
       }
     }
-    this.logger.error('Failed to process DelegateeAltered event after max retries', { event });
+    this.logger.error(
+      'Failed to process DelegateeAltered event after max retries',
+      { event },
+    );
   }
 
   async getCurrentBlock(): Promise<number> {
@@ -236,8 +276,8 @@ export class StakerMonitor {
       networkStatus: {
         chainId: this.config.chainId,
         networkName: this.config.networkName,
-        isConnected: true // You might want to implement a more sophisticated check
-      }
+        isConnected: true, // You might want to implement a more sophisticated check
+      },
     };
   }
 

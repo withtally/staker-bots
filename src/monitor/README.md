@@ -5,6 +5,7 @@ A robust monitoring system for tracking staking events on the blockchain. This s
 ## Overview
 
 The Staker Monitor is designed to:
+
 - Track staking events from a specified smart contract
 - Process and store events in a database (Supabase or JSON)
 - Handle network reorgs and connection issues
@@ -16,12 +17,14 @@ The Staker Monitor is designed to:
 ### Core Components
 
 1. **StakerMonitor**: The main orchestrator that:
+
    - Manages the event processing lifecycle
    - Handles blockchain polling and event filtering
    - Maintains processing checkpoints
    - Provides monitoring status and health checks
 
 2. **EventProcessor**: Processes individual blockchain events:
+
    - StakeDeposited
    - StakeWithdrawn
    - DelegateeAltered
@@ -73,6 +76,7 @@ HEALTH_CHECK_INTERVAL=60 # Health check interval in seconds
 ## Error Handling
 
 The monitor implements comprehensive error handling:
+
 - Automatic retries with exponential backoff
 - Graceful shutdown on SIGTERM/SIGINT
 - Uncaught exception handling
@@ -82,6 +86,7 @@ The monitor implements comprehensive error handling:
 ## Monitoring and Maintenance
 
 The system provides real-time status information including:
+
 - Current processing lag
 - Last processed block
 - Network connection status

@@ -28,7 +28,11 @@ export const CONFIG = {
     chainId: parseInt(process.env.CHAIN_ID || '42161'),
     stakerAddress: process.env.STAKER_CONTRACT_ADDRESS!,
     startBlock: parseInt(process.env.START_BLOCK || '0'),
-    logLevel: (process.env.LOG_LEVEL || 'info') as 'debug' | 'info' | 'warn' | 'error',
+    logLevel: (process.env.LOG_LEVEL || 'info') as
+      | 'debug'
+      | 'info'
+      | 'warn'
+      | 'error',
     databaseType: process.env.DATABASE_TYPE === 'json' ? 'json' : 'supabase',
     pollInterval: parseInt(process.env.POLL_INTERVAL || '15'),
     maxBlockRange: parseInt(process.env.MAX_BLOCK_RANGE || '2000'),
@@ -36,13 +40,13 @@ export const CONFIG = {
     reorgDepth: parseInt(process.env.REORG_DEPTH || '64'),
     confirmations: parseInt(process.env.CONFIRMATIONS || '20'),
     healthCheckInterval: parseInt(process.env.HEALTH_CHECK_INTERVAL || '60'),
-  }
+  },
 } as const;
 
 // Helper to create provider
 export const createProvider = () => {
   return new ethers.JsonRpcProvider(
     CONFIG.monitor.rpcUrl,
-    CONFIG.monitor.chainId
+    CONFIG.monitor.chainId,
   );
 };

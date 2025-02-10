@@ -1,14 +1,21 @@
 import { IDatabase } from '@/database';
-import { ProcessingResult, StakeDepositedEvent, StakeWithdrawnEvent, DelegateeAlteredEvent } from './types';
+import {
+  ProcessingResult,
+  StakeDepositedEvent,
+  StakeWithdrawnEvent,
+  DelegateeAlteredEvent,
+} from './types';
 import { Logger } from './logging';
 
 export class EventProcessor {
   constructor(
     private readonly db: IDatabase,
-    private readonly logger: Logger
+    private readonly logger: Logger,
   ) {}
 
-  async processStakeDeposited(event: StakeDepositedEvent): Promise<ProcessingResult> {
+  async processStakeDeposited(
+    event: StakeDepositedEvent,
+  ): Promise<ProcessingResult> {
     try {
       await this.db.createDeposit({
         deposit_id: event.depositId,
@@ -20,12 +27,12 @@ export class EventProcessor {
         success: true,
         blockNumber: event.blockNumber,
         eventHash: event.transactionHash,
-        retryable: false
+        retryable: false,
       };
     } catch (error) {
       this.logger.error('Failed to process StakeDeposited event', {
         error,
-        event
+        event,
       });
 
       return {
@@ -33,12 +40,14 @@ export class EventProcessor {
         error: error as Error,
         blockNumber: event.blockNumber,
         eventHash: event.transactionHash,
-        retryable: true
+        retryable: true,
       };
     }
   }
 
-  async processStakeWithdrawn(event: StakeWithdrawnEvent): Promise<ProcessingResult> {
+  async processStakeWithdrawn(
+    event: StakeWithdrawnEvent,
+  ): Promise<ProcessingResult> {
     try {
       const deposit = await this.db.getDeposit(event.depositId);
       if (!deposit) {
@@ -49,12 +58,12 @@ export class EventProcessor {
         success: true,
         blockNumber: event.blockNumber,
         eventHash: event.transactionHash,
-        retryable: false
+        retryable: false,
       };
     } catch (error) {
       this.logger.error('Failed to process StakeWithdrawn event', {
         error,
-        event
+        event,
       });
 
       return {
@@ -62,12 +71,14 @@ export class EventProcessor {
         error: error as Error,
         blockNumber: event.blockNumber,
         eventHash: event.transactionHash,
-        retryable: true
+        retryable: true,
       };
     }
   }
 
-  async processDelegateeAltered(event: DelegateeAlteredEvent): Promise<ProcessingResult> {
+  async processDelegateeAltered(
+    event: DelegateeAlteredEvent,
+  ): Promise<ProcessingResult> {
     try {
       const deposit = await this.db.getDeposit(event.depositId);
       if (!deposit) {
@@ -83,12 +94,12 @@ export class EventProcessor {
         success: true,
         blockNumber: event.blockNumber,
         eventHash: event.transactionHash,
-        retryable: false
+        retryable: false,
       };
     } catch (error) {
       this.logger.error('Failed to process DelegateeAltered event', {
         error,
-        event
+        event,
       });
 
       return {
@@ -96,7 +107,7 @@ export class EventProcessor {
         error: error as Error,
         blockNumber: event.blockNumber,
         eventHash: event.transactionHash,
-        retryable: true
+        retryable: true,
       };
     }
   }
