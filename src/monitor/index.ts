@@ -1,16 +1,19 @@
+/* eslint-disable no-console */
 import { StakerMonitor } from './StakerMonitor';
 import { DatabaseWrapper } from '@/database';
 import { CONFIG, createProvider } from '@/config';
 import { createMonitorConfig } from './constants';
+import { ConsoleLogger } from './logging';
 
 async function main() {
   const provider = createProvider();
+  const logger = new ConsoleLogger('info');
 
   // Test provider connection
   try {
     await provider.getNetwork();
   } catch (error) {
-    console.error('Failed to connect to provider:', error);
+    logger.error('Failed to connect to provider:', { error });
     process.exit(1);
   }
 
@@ -23,13 +26,13 @@ async function main() {
 
   // Handle shutdown gracefully
   async function shutdown(signal: string) {
-    console.log(`\nReceived ${signal}. Starting graceful shutdown...`);
+    logger.info(`Received ${signal}. Starting graceful shutdown...`);
     try {
       await monitor.stop();
-      console.log('Shutdown completed successfully');
+      logger.info('Shutdown completed successfully');
       process.exit(0);
     } catch (error) {
-      console.error('Error during shutdown:', error);
+      logger.error('Error during shutdown:', { error });
       process.exit(1);
     }
   }
@@ -45,18 +48,18 @@ async function main() {
     setInterval(async () => {
       try {
         const status = await monitor.getMonitorStatus();
-        console.log('Monitor Status:', {
+        logger.info('Monitor Status:', {
           isRunning: status.isRunning,
           processingLag: status.processingLag,
           currentBlock: status.currentChainBlock,
           lastProcessedBlock: status.lastProcessedBlock,
         });
       } catch (error) {
-        console.error('Health check failed:', error);
+        logger.error('Health check failed:', { error });
       }
     }, CONFIG.monitor.healthCheckInterval * 1000);
   } catch (error) {
-    console.error('Failed to start monitor:', error);
+    logger.error('Failed to start monitor:', { error });
     process.exit(1);
   }
 }

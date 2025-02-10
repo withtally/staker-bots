@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 export interface Logger {
   debug(message: string, meta?: Record<string, unknown>): void;
   info(message: string, meta?: Record<string, unknown>): void;
