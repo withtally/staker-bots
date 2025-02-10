@@ -5,8 +5,6 @@ import { ConsoleLogger, Logger } from './logging';
 import { MonitorConfig, MonitorStatus, StakeDepositedEvent, StakeWithdrawnEvent, DelegateeAlteredEvent } from './types';
 import { STAKER_ABI } from './constants';
 
-
-
 export class StakerMonitor {
   private readonly db: IDatabase;
   private readonly provider: ethers.Provider;
@@ -49,7 +47,6 @@ export class StakerMonitor {
       this.logger.info('Loaded checkpoint', { blockNumber: this.lastProcessedBlock });
     }
 
-    // Start processing loop
     this.processingPromise = this.processLoop();
   }
 
@@ -161,27 +158,51 @@ export class StakerMonitor {
   }
 
   async handleStakeDeposited(event: StakeDepositedEvent): Promise<void> {
-    const result = await this.eventProcessor.processStakeDeposited(event);
-    if (!result.success && result.retryable) {
-      // Implement retry logic here if needed
-      this.logger.warn('Failed to process StakeDeposited event', { event });
+    let attempts = 0;
+    while (attempts < this.config.maxRetries) {
+      const result = await this.eventProcessor.processStakeDeposited(event);
+      if (result.success || !result.retryable) {
+        return;
+      }
+      attempts++;
+      if (attempts < this.config.maxRetries) {
+        this.logger.warn(`Retrying StakeDeposited event (attempt ${attempts + 1}/${this.config.maxRetries})`, { event });
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempts)); // Exponential backoff
+      }
     }
+    this.logger.error('Failed to process StakeDeposited event after max retries', { event });
   }
 
   async handleStakeWithdrawn(event: StakeWithdrawnEvent): Promise<void> {
-    const result = await this.eventProcessor.processStakeWithdrawn(event);
-    if (!result.success && result.retryable) {
-      // Implement retry logic here if needed
-      this.logger.warn('Failed to process StakeWithdrawn event', { event });
+    let attempts = 0;
+    while (attempts < this.config.maxRetries) {
+      const result = await this.eventProcessor.processStakeWithdrawn(event);
+      if (result.success || !result.retryable) {
+        return;
+      }
+      attempts++;
+      if (attempts < this.config.maxRetries) {
+        this.logger.warn(`Retrying StakeWithdrawn event (attempt ${attempts + 1}/${this.config.maxRetries})`, { event });
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempts));
+      }
     }
+    this.logger.error('Failed to process StakeWithdrawn event after max retries', { event });
   }
 
   async handleDelegateeAltered(event: DelegateeAlteredEvent): Promise<void> {
-    const result = await this.eventProcessor.processDelegateeAltered(event);
-    if (!result.success && result.retryable) {
-      // Implement retry logic here if needed
-      this.logger.warn('Failed to process DelegateeAltered event', { event });
+    let attempts = 0;
+    while (attempts < this.config.maxRetries) {
+      const result = await this.eventProcessor.processDelegateeAltered(event);
+      if (result.success || !result.retryable) {
+        return;
+      }
+      attempts++;
+      if (attempts < this.config.maxRetries) {
+        this.logger.warn(`Retrying DelegateeAltered event (attempt ${attempts + 1}/${this.config.maxRetries})`, { event });
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempts));
+      }
     }
+    this.logger.error('Failed to process DelegateeAltered event after max retries', { event });
   }
 
   async getCurrentBlock(): Promise<number> {
