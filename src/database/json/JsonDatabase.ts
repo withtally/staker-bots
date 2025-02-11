@@ -43,6 +43,29 @@ export class JsonDatabase implements IDatabase {
     await this.saveToFile();
   }
 
+  async deleteDeposit(depositId: string): Promise<void> {
+    if (!this.data.deposits[depositId]) {
+      throw new Error(`Deposit ${depositId} not found`);
+    }
+
+    delete this.data.deposits[depositId];
+    await this.saveToFile();
+  }
+
+  async updateDeposit(depositId: string, update: Partial<Omit<Deposit, 'deposit_id'>>): Promise<void> {
+    let deposit = this.data.deposits[depositId];
+    if (!deposit) throw new Error(`Deposit ${depositId} not found`);
+
+    deposit = {
+      ...deposit,
+      ...update,
+      updated_at: new Date().toISOString(),
+    }
+    this.data.deposits[depositId] = deposit;
+
+    await this.saveToFile();
+  }
+
   async getDeposit(depositId: string): Promise<Deposit | null> {
     return this.data.deposits[depositId] || null;
   }

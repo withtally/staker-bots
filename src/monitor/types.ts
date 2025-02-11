@@ -1,5 +1,6 @@
 import { BigNumberish, ethers } from 'ethers';
 import { IDatabase, ProcessingCheckpoint } from '@/database';
+import { CONFIG, createProvider } from '@/config';
 
 export interface MonitorConfig {
   provider: ethers.Provider;
@@ -18,6 +19,7 @@ export interface MonitorConfig {
   confirmations: number;
   healthCheckInterval: number;
   logLevel: 'debug' | 'info' | 'warn' | 'error';
+  databaseType: 'json' | 'supabase';
 }
 
 export interface StakeDepositedEvent {
@@ -27,12 +29,14 @@ export interface StakeDepositedEvent {
   amount: BigNumberish;
   blockNumber: number;
   transactionHash: string;
+  withdrawnAmount: number;
 }
 
 export interface StakeWithdrawnEvent {
   depositId: string;
   blockNumber: number;
   transactionHash: string;
+  withdrawnAmount: number;
 }
 
 export interface DelegateeAlteredEvent {
@@ -41,6 +45,7 @@ export interface DelegateeAlteredEvent {
   newDelegatee: string;
   blockNumber: number;
   transactionHash: string;
+  withdrawnAmount: number;
 }
 
 export interface ProcessingResult {

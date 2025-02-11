@@ -1,12 +1,12 @@
 import { ethers } from 'ethers';
 import { MonitorConfig } from './types';
-import { IDatabase } from '@/database';
-import { CONFIG } from '@/config';
+import { IDatabase, ProcessingCheckpoint } from '@/database';
+import { CONFIG, createProvider } from '@/config';
 
 // ABI fragments
 export const STAKER_ABI = [
-  'event StakeDeposited(string indexed depositId, address indexed ownerAddress, address indexed delegateeAddress, uint256 amount)',
-  'event StakeWithdrawn(string indexed depositId)',
+  'event StakeDeposited(address owner, DepositIdentifier indexed depositId, uint256 amount, uint256 depositBalance, uint256 earningPower)',
+  'event StakeWithdrawn(address owner, DepositIdentifier indexed depositId, uint256 amount, uint256 depositBalance, uint256 earningPower)',
   'event DelegateeAltered(string indexed depositId, address indexed oldDelegatee, address indexed newDelegatee)',
 ];
 

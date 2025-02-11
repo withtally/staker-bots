@@ -18,6 +18,8 @@ export class DatabaseWrapper implements IDatabase {
     } else {
       this.db = {
         createDeposit: supabaseDb.createDeposit,
+        updateDeposit: supabaseDb.updateDeposit,
+        deleteDeposit: supabaseDb.deleteDeposit,
         getDeposit: supabaseDb.getDeposit,
         getDepositsByDelegatee: supabaseDb.getDepositsByDelegatee,
         updateCheckpoint: supabaseCheckpoints.updateCheckpoint,
@@ -29,6 +31,14 @@ export class DatabaseWrapper implements IDatabase {
   // Deposits
   async createDeposit(deposit: Deposit): Promise<void> {
     return this.db.createDeposit(deposit);
+  }
+
+  async updateDeposit(depositId: string, update: Partial<Omit<Deposit, 'deposit_id'>>): Promise<void> {
+    return this.db.updateDeposit(depositId, update);
+  }
+
+  async deleteDeposit(depositId: string): Promise<void> {
+    return this.db.deleteDeposit(depositId);
   }
 
   async getDeposit(depositId: string): Promise<Deposit | null> {

@@ -9,6 +9,7 @@ async function main() {
     deposit_id: '123',
     owner_address: '0x...',
     delegatee_address: '0x...',
+    amount: 0
   });
 }
 

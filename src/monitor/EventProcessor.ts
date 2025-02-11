@@ -21,6 +21,7 @@ export class EventProcessor {
         deposit_id: event.depositId,
         owner_address: event.ownerAddress,
         delegatee_address: event.delegateeAddress,
+        amount: Number(event.amount)
       });
 
       return {
@@ -54,6 +55,14 @@ export class EventProcessor {
         throw new Error(`Deposit ${event.depositId} not found`);
       }
 
+      const remainingAmount = deposit.amount - event.withdrawnAmount;
+
+      if (remainingAmount <= 0) {
+        await this.db.deleteDeposit(event.depositId);
+      } else {
+        await this.db.updateDeposit(event.depositId, { amount: remainingAmount });
+      }
+
       return {
         success: true,
         blockNumber: event.blockNumber,
@@ -80,15 +89,10 @@ export class EventProcessor {
     event: DelegateeAlteredEvent,
   ): Promise<ProcessingResult> {
     try {
-      const deposit = await this.db.getDeposit(event.depositId);
-      if (!deposit) {
-        throw new Error(`Deposit ${event.depositId} not found`);
-      }
-
-      await this.db.createDeposit({
-        ...deposit,
-        delegatee_address: event.newDelegatee,
-      });
+      await this.db.updateDeposit(
+        event.depositId,
+        { delegatee_address: event.newDelegatee }
+      );
 
       return {
         success: true,

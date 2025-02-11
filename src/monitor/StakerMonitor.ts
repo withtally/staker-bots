@@ -158,9 +158,10 @@ export class StakerMonitor {
 
     for (const event of withdrawnEvents) {
       const typedEvent = event as ethers.EventLog;
-      const { depositId } = typedEvent.args;
+      const { depositId, amount } = typedEvent.args;
       await this.handleStakeWithdrawn({
         depositId,
+        withdrawnAmount: Number(amount),
         blockNumber: typedEvent.blockNumber!,
         transactionHash: typedEvent.transactionHash!,
       });
@@ -251,16 +252,6 @@ export class StakerMonitor {
 
   async getLastProcessedBlock(): Promise<number> {
     return this.lastProcessedBlock;
-  }
-
-  async detectReorg(blockNumber: number): Promise<boolean> {
-    const checkpoint = await this.db.getCheckpoint('staker-monitor');
-    if (!checkpoint || checkpoint.last_block_number !== blockNumber) {
-      return false;
-    }
-
-    const block = await this.provider.getBlock(blockNumber);
-    return block?.hash !== checkpoint.block_hash;
   }
 
   async getMonitorStatus(): Promise<MonitorStatus> {
