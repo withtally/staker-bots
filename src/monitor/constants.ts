@@ -5,8 +5,8 @@ import { CONFIG } from '@/config';
 
 // ABI fragments
 export const STAKER_ABI = [
-  'event StakeDeposited(address owner, DepositIdentifier indexed depositId, uint256 amount, uint256 depositBalance, uint256 earningPower)',
-  'event StakeWithdrawn(address owner, DepositIdentifier indexed depositId, uint256 amount, uint256 depositBalance, uint256 earningPower)',
+  'event StakeDeposited(address owner, uint256 indexed depositId, uint256 amount, uint256 depositBalance, uint256 earningPower)',
+  'event StakeWithdrawn(address owner, uint256 indexed depositId, uint256 amount, uint256 depositBalance, uint256 earningPower)',
   'event DelegateeAltered(string indexed depositId, address indexed oldDelegatee, address indexed newDelegatee)',
 ];
 

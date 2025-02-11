@@ -5,7 +5,7 @@ import { CONFIG, createProvider } from '@/config';
 import { createMonitorConfig } from './constants';
 import { ConsoleLogger } from './logging';
 
-async function main() {
+export async function main() {
   const provider = createProvider();
   const logger = new ConsoleLogger('info');
 

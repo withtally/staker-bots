@@ -10,12 +10,13 @@ export class JsonDatabase implements IDatabase {
     checkpoints: Record<string, ProcessingCheckpoint>;
   };
 
-  constructor(dbPath = '.local-db.json') {
+  constructor(dbPath = 'staker-monitor-db.json') {
     this.dbPath = path.resolve(process.cwd(), dbPath);
     this.data = {
       deposits: {},
       checkpoints: {},
     };
+    console.log('JsonDatabase initialized at:', this.dbPath);
     this.initializeDb();
   }
 
@@ -23,14 +24,17 @@ export class JsonDatabase implements IDatabase {
     try {
       const fileContent = await fs.readFile(this.dbPath, 'utf-8');
       this.data = JSON.parse(fileContent);
+      console.log('Loaded existing database');
     } catch (error) {
       // If file doesn't exist, create it with empty data
       await this.saveToFile();
+      console.log('Created new database file');
     }
   }
 
   private async saveToFile() {
     await fs.writeFile(this.dbPath, JSON.stringify(this.data, null, 2));
+    console.log('Saved database to file');
   }
 
   // Deposits

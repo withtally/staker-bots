@@ -35,7 +35,7 @@ export const CONFIG = {
       | 'info'
       | 'warn'
       | 'error',
-    databaseType: process.env.DATABASE_TYPE === 'json' ? 'json' : 'supabase',
+    databaseType: process.env.DB || 'json',
     pollInterval: parseInt(process.env.POLL_INTERVAL || '15'),
     maxBlockRange: parseInt(process.env.MAX_BLOCK_RANGE || '2000'),
     maxRetries: parseInt(process.env.MAX_RETRIES || '5'),

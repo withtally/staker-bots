@@ -1,11 +1,27 @@
+-- Create monitor_state table to track processing state
+CREATE TABLE IF NOT EXISTS monitor_state (
+    id SERIAL PRIMARY KEY,
+    last_processed_block BIGINT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::TEXT, NOW()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::TEXT, NOW()) NOT NULL
+);
+
+-- Ensure there's always at least one row in monitor_state
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM monitor_state) THEN
+        INSERT INTO monitor_state (last_processed_block) VALUES (0);
+    END IF;
+END $$;
+
 -- Create deposits table
 CREATE TABLE IF NOT EXISTS deposits (
     deposit_id TEXT PRIMARY KEY,
     owner_address TEXT NOT NULL,
-    delegatee_address TEXT NOT NULL,
+    delegatee_address TEXT,
     amount NUMERIC NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()) NOT NULL,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()) NOT NULL
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::TEXT, NOW()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::TEXT, NOW()) NOT NULL
 );
 
 -- Create processing_checkpoints table

@@ -50,14 +50,11 @@ export class StakerMonitor {
       address: this.config.stakerAddress,
     });
 
-    // Load last checkpoint if exists
-    const checkpoint = await this.db.getCheckpoint('staker-monitor');
-    if (checkpoint) {
-      this.lastProcessedBlock = checkpoint.last_block_number;
-      this.logger.info('Loaded checkpoint', {
-        blockNumber: this.lastProcessedBlock,
-      });
-    }
+    // Always start from the configured start block
+    this.lastProcessedBlock = this.config.startBlock;
+    this.logger.info('Starting from block', {
+      blockNumber: this.lastProcessedBlock,
+    });
 
     this.processingPromise = this.processLoop();
   }
@@ -81,8 +78,13 @@ export class StakerMonitor {
         const targetBlock = currentBlock - this.config.confirmations;
 
         if (targetBlock <= this.lastProcessedBlock) {
+          this.logger.debug('Waiting for new blocks', {
+            currentBlock,
+            targetBlock,
+            lastProcessedBlock: this.lastProcessedBlock,
+          });
           await new Promise((resolve) =>
-            setTimeout(resolve, this.config.pollInterval),
+            setTimeout(resolve, this.config.pollInterval * 1000),
           );
           continue;
         }
@@ -93,10 +95,18 @@ export class StakerMonitor {
           fromBlock + this.config.maxBlockRange - 1,
         );
 
+        this.logger.info('Processing new blocks', {
+          fromBlock,
+          toBlock,
+          currentBlock,
+          blockRange: toBlock - fromBlock + 1,
+        });
+
         await this.processBlockRange(fromBlock, toBlock);
 
         const block = await this.provider.getBlock(toBlock);
         if (!block) throw new Error(`Block ${toBlock} not found`);
+
         // Update checkpoint
         await this.db.updateCheckpoint({
           component_type: 'staker-monitor',
@@ -106,10 +116,18 @@ export class StakerMonitor {
         });
 
         this.lastProcessedBlock = toBlock;
+        this.logger.info('Blocks processed successfully', {
+          fromBlock,
+          toBlock,
+          blockHash: block.hash,
+        });
       } catch (error) {
-        this.logger.error('Error in processing loop', { error });
+        this.logger.error('Error in processing loop', {
+          error,
+          lastProcessedBlock: this.lastProcessedBlock,
+        });
         await new Promise((resolve) =>
-          setTimeout(resolve, this.config.pollInterval),
+          setTimeout(resolve, this.config.pollInterval * 1000),
         );
       }
     }
@@ -119,37 +137,48 @@ export class StakerMonitor {
     fromBlock: number,
     toBlock: number,
   ): Promise<void> {
-    this.logger.debug('Processing block range', { fromBlock, toBlock });
+    this.logger.info('Querying events for block range', { fromBlock, toBlock });
 
-    const [depositedEvents, withdrawnEvents, alteredEvents] = await Promise.all(
-      [
-        this.contract.queryFilter(
-          this.contract.filters.StakeDeposited!(),
-          fromBlock,
-          toBlock,
-        ),
-        this.contract.queryFilter(
-          this.contract.filters.StakeWithdrawn!(),
-          fromBlock,
-          toBlock,
-        ),
-        this.contract.queryFilter(
-          this.contract.filters.DelegateeAltered!(),
-          fromBlock,
-          toBlock,
-        ),
-      ],
-    );
+    const [depositedEvents, withdrawnEvents, alteredEvents] = await Promise.all([
+      this.contract.queryFilter(
+        this.contract.filters.StakeDeposited!(),
+        fromBlock,
+        toBlock,
+      ),
+      this.contract.queryFilter(
+        this.contract.filters.StakeWithdrawn!(),
+        fromBlock,
+        toBlock,
+      ),
+      this.contract.queryFilter(
+        this.contract.filters.DelegateeAltered!(),
+        fromBlock,
+        toBlock,
+      ),
+    ]);
+
+    this.logger.info('Events found', {
+      depositedCount: depositedEvents.length,
+      withdrawnCount: withdrawnEvents.length,
+      alteredCount: alteredEvents.length,
+      blockRange: `${fromBlock}-${toBlock}`,
+    });
 
     // Process events in order
     for (const event of depositedEvents) {
       const typedEvent = event as ethers.EventLog;
-      const { depositId, ownerAddress, delegateeAddress, amount } =
-        typedEvent.args;
-      await this.handleStakeDeposited({
-        depositId,
+      const { depositId, owner: ownerAddress, amount } = typedEvent.args;
+      this.logger.debug('Processing StakeDeposited event', {
+        depositId: depositId.toString(),
         ownerAddress,
-        delegateeAddress,
+        amount: amount.toString(),
+        blockNumber: typedEvent.blockNumber,
+        txHash: typedEvent.transactionHash,
+      });
+      await this.handleStakeDeposited({
+        depositId: depositId.toString(),
+        ownerAddress,
+        delegateeAddress: ownerAddress,
         amount,
         blockNumber: typedEvent.blockNumber!,
         transactionHash: typedEvent.transactionHash!,
@@ -159,9 +188,15 @@ export class StakerMonitor {
     for (const event of withdrawnEvents) {
       const typedEvent = event as ethers.EventLog;
       const { depositId, amount } = typedEvent.args;
+      this.logger.debug('Processing StakeWithdrawn event', {
+        depositId: depositId.toString(),
+        amount: amount.toString(),
+        blockNumber: typedEvent.blockNumber,
+        txHash: typedEvent.transactionHash,
+      });
       await this.handleStakeWithdrawn({
-        depositId,
-        withdrawnAmount: Number(amount),
+        depositId: depositId.toString(),
+        withdrawnAmount: amount,
         blockNumber: typedEvent.blockNumber!,
         transactionHash: typedEvent.transactionHash!,
       });
@@ -170,6 +205,13 @@ export class StakerMonitor {
     for (const event of alteredEvents) {
       const typedEvent = event as ethers.EventLog;
       const { depositId, oldDelegatee, newDelegatee } = typedEvent.args;
+      this.logger.debug('Processing DelegateeAltered event', {
+        depositId,
+        oldDelegatee,
+        newDelegatee,
+        blockNumber: typedEvent.blockNumber,
+        txHash: typedEvent.transactionHash,
+      });
       await this.handleDelegateeAltered({
         depositId,
         oldDelegatee,

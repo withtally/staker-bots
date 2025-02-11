@@ -1,0 +1,20 @@
+{
+  "deposits": {
+    "0": {
+      "deposit_id": "0",
+      "owner_address": "0x8bcd2f26DABe6E605B040b3Bdf3b68d5EF7CbA25",
+      "delegatee_address": "0x8bcd2f26DABe6E605B040b3Bdf3b68d5EF7CbA25",
+      "amount": 5e+22,
+      "created_at": "2025-02-11T16:12:42.183Z",
+      "updated_at": "2025-02-11T16:12:42.184Z"
+    }
+  },
+  "checkpoints": {
+    "staker-monitor": {
+      "component_type": "staker-monitor",
+      "last_block_number": 303676740,
+      "block_hash": "0xaa7d8ee007caf3f35967c6d4238f11e2cfc67e85aca5b2262f93d537bd925c28",
+      "last_update": "2025-02-11T16:13:07.588Z"
+    }
+  }
+}

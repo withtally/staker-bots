@@ -17,22 +17,19 @@ export class EventProcessor {
     event: StakeDepositedEvent,
   ): Promise<ProcessingResult> {
     try {
-      const existingDeposit = await this.db.getDeposit(event.depositId);
+      // Create new deposit directly, no need to check if it exists
+      await this.db.createDeposit({
+        deposit_id: event.depositId,
+        owner_address: event.ownerAddress,
+        delegatee_address: event.delegateeAddress,
+        amount: Number(event.amount),
+      });
 
-      if (existingDeposit) {
-        // Update existing deposit amount
-        await this.db.updateDeposit(event.depositId, {
-          amount: existingDeposit.amount + Number(event.amount),
-        });
-      } else {
-        // Create new deposit
-        await this.db.createDeposit({
-          deposit_id: event.depositId,
-          owner_address: event.ownerAddress,
-          delegatee_address: event.delegateeAddress,
-          amount: Number(event.amount),
-        });
-      }
+      this.logger.info('Created new deposit', {
+        depositId: event.depositId,
+        owner: event.ownerAddress,
+        amount: event.amount.toString(),
+      });
 
       return {
         success: true,
