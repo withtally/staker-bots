@@ -1,7 +1,7 @@
 import { ethers } from 'ethers';
 import { MonitorConfig } from './types';
-import { IDatabase, ProcessingCheckpoint } from '@/database';
-import { CONFIG, createProvider } from '@/config';
+import { IDatabase } from '@/database';
+import { CONFIG } from '@/config';
 
 // ABI fragments
 export const STAKER_ABI = [

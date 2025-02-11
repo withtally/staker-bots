@@ -1,6 +1,5 @@
 import { BigNumberish, ethers } from 'ethers';
 import { IDatabase, ProcessingCheckpoint } from '@/database';
-import { CONFIG, createProvider } from '@/config';
 
 export interface MonitorConfig {
   provider: ethers.Provider;
