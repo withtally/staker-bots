@@ -6,7 +6,10 @@ export async function createDeposit(deposit: Deposit): Promise<void> {
   if (error) throw error;
 }
 
-export async function updateDeposit(depositId: string, update: Partial<Omit<Deposit, 'deposit_id'>>): Promise<void> {
+export async function updateDeposit(
+  depositId: string,
+  update: Partial<Omit<Deposit, 'deposit_id'>>,
+): Promise<void> {
   const { error } = await supabase
     .from('deposits')
     .update(update)
@@ -23,7 +26,6 @@ export async function deleteDeposit(depositId: string): Promise<void> {
 
   if (error) throw error;
 }
-
 
 export async function getDeposit(depositId: string): Promise<Deposit | null> {
   const { data, error } = await supabase

@@ -52,7 +52,10 @@ export class JsonDatabase implements IDatabase {
     await this.saveToFile();
   }
 
-  async updateDeposit(depositId: string, update: Partial<Omit<Deposit, 'deposit_id'>>): Promise<void> {
+  async updateDeposit(
+    depositId: string,
+    update: Partial<Omit<Deposit, 'deposit_id'>>,
+  ): Promise<void> {
     let deposit = this.data.deposits[depositId];
     if (!deposit) throw new Error(`Deposit ${depositId} not found`);
 
@@ -60,7 +63,7 @@ export class JsonDatabase implements IDatabase {
       ...deposit,
       ...update,
       updated_at: new Date().toISOString(),
-    }
+    };
     this.data.deposits[depositId] = deposit;
 
     await this.saveToFile();

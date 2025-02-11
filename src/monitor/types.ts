@@ -29,7 +29,6 @@ export interface StakeDepositedEvent {
   amount: BigNumberish;
   blockNumber: number;
   transactionHash: string;
-  withdrawnAmount: number;
 }
 
 export interface StakeWithdrawnEvent {
@@ -45,7 +44,6 @@ export interface DelegateeAlteredEvent {
   newDelegatee: string;
   blockNumber: number;
   transactionHash: string;
-  withdrawnAmount: number;
 }
 
 export interface ProcessingResult {

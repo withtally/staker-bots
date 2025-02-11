@@ -17,12 +17,22 @@ export class EventProcessor {
     event: StakeDepositedEvent,
   ): Promise<ProcessingResult> {
     try {
-      await this.db.createDeposit({
-        deposit_id: event.depositId,
-        owner_address: event.ownerAddress,
-        delegatee_address: event.delegateeAddress,
-        amount: Number(event.amount)
-      });
+      const existingDeposit = await this.db.getDeposit(event.depositId);
+
+      if (existingDeposit) {
+        // Update existing deposit amount
+        await this.db.updateDeposit(event.depositId, {
+          amount: existingDeposit.amount + Number(event.amount),
+        });
+      } else {
+        // Create new deposit
+        await this.db.createDeposit({
+          deposit_id: event.depositId,
+          owner_address: event.ownerAddress,
+          delegatee_address: event.delegateeAddress,
+          amount: Number(event.amount),
+        });
+      }
 
       return {
         success: true,
@@ -60,7 +70,9 @@ export class EventProcessor {
       if (remainingAmount <= 0) {
         await this.db.deleteDeposit(event.depositId);
       } else {
-        await this.db.updateDeposit(event.depositId, { amount: remainingAmount });
+        await this.db.updateDeposit(event.depositId, {
+          amount: remainingAmount,
+        });
       }
 
       return {
@@ -89,10 +101,9 @@ export class EventProcessor {
     event: DelegateeAlteredEvent,
   ): Promise<ProcessingResult> {
     try {
-      await this.db.updateDeposit(
-        event.depositId,
-        { delegatee_address: event.newDelegatee }
-      );
+      await this.db.updateDeposit(event.depositId, {
+        delegatee_address: event.newDelegatee,
+      });
 
       return {
         success: true,

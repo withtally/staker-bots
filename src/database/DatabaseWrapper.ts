@@ -33,7 +33,10 @@ export class DatabaseWrapper implements IDatabase {
     return this.db.createDeposit(deposit);
   }
 
-  async updateDeposit(depositId: string, update: Partial<Omit<Deposit, 'deposit_id'>>): Promise<void> {
+  async updateDeposit(
+    depositId: string,
+    update: Partial<Omit<Deposit, 'deposit_id'>>,
+  ): Promise<void> {
     return this.db.updateDeposit(depositId, update);
   }
 
