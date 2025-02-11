@@ -8,7 +8,7 @@ config();
 const requiredEnvVars = [
   'RPC_URL',
   'STAKER_CONTRACT_ADDRESS',
-  'CHAIN_ID'
+  'CHAIN_ID',
 ] as const;
 
 for (const envVar of requiredEnvVars) {
