@@ -2,9 +2,11 @@ import fs from 'fs/promises';
 import path from 'path';
 import { IDatabase } from '../interfaces/IDatabase';
 import { Deposit, ProcessingCheckpoint } from '../interfaces/types';
+import { ConsoleLogger, Logger } from '@/monitor/logging';
 
 export class JsonDatabase implements IDatabase {
   private dbPath: string;
+  private logger: Logger;
   private data: {
     deposits: Record<string, Deposit>;
     checkpoints: Record<string, ProcessingCheckpoint>;
@@ -12,11 +14,12 @@ export class JsonDatabase implements IDatabase {
 
   constructor(dbPath = 'staker-monitor-db.json') {
     this.dbPath = path.resolve(process.cwd(), dbPath);
+    this.logger = new ConsoleLogger('info');
     this.data = {
       deposits: {},
       checkpoints: {},
     };
-    console.log('JsonDatabase initialized at:', this.dbPath);
+    this.logger.info('JsonDatabase initialized at:', { path: this.dbPath });
     this.initializeDb();
   }
 
@@ -24,17 +27,17 @@ export class JsonDatabase implements IDatabase {
     try {
       const fileContent = await fs.readFile(this.dbPath, 'utf-8');
       this.data = JSON.parse(fileContent);
-      console.log('Loaded existing database');
+      this.logger.info('Loaded existing database');
     } catch (error) {
       // If file doesn't exist, create it with empty data
       await this.saveToFile();
-      console.log('Created new database file');
+      this.logger.info('Created new database file');
     }
   }
 
   private async saveToFile() {
     await fs.writeFile(this.dbPath, JSON.stringify(this.data, null, 2));
-    console.log('Saved database to file');
+    this.logger.debug('Saved database to file');
   }
 
   // Deposits
@@ -96,16 +99,15 @@ export class JsonDatabase implements IDatabase {
       last_update: new Date().toISOString(),
     };
     await this.saveToFile();
-    console.log('Updated checkpoint:', checkpoint);
+    this.logger.debug('Updated checkpoint:', { checkpoint });
   }
 
   async getCheckpoint(
     componentType: string,
   ): Promise<ProcessingCheckpoint | null> {
-    console.log('Fetching checkpoint for component:', componentType);
-    console.log('Current checkpoints in DB:', this.data.checkpoints);
+    this.logger.debug('Fetching checkpoint for component:', { componentType });
     const checkpoint = this.data.checkpoints[componentType] || null;
-    console.log('Retrieved checkpoint result:', checkpoint);
+    this.logger.debug('Retrieved checkpoint:', { checkpoint });
     return checkpoint;
   }
 }
