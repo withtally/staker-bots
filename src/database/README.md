@@ -15,6 +15,7 @@
 
 - `deposit_id` (TEXT, PK): Unique identifier for each deposit
 - `owner_address` (TEXT): Address of the deposit owner
+- `amount` (NUMERIC): amount of deposit
 - `delegatee_address` (TEXT): Address of the delegatee
 - `created_at` (TIMESTAMP): Auto-set on creation
 - `updated_at` (TIMESTAMP): Auto-updates on changes
@@ -46,23 +47,7 @@ const jsonDb = new DatabaseWrapper({
 });
 
 // Create deposit
-await db.createDeposit({
-  deposit_id: '123',
-  owner_address: '0x...',
-  delegatee_address: '0x...',
-});
-
-// Query deposits
-const deposit = await db.getDeposit('123');
-const delegateeDeposits = await db.getDepositsByDelegatee('0x...');
-
-// Update checkpoint
-await db.updateCheckpoint({
-  component_type: 'processor1',
-  last_block_number: 12345,
-  block_hash: '0x...',
-  last_update: new Date(),
-});
+npm run dev
 ```
 
 ## Local JSON Database

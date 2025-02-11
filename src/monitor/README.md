@@ -66,11 +66,11 @@ HEALTH_CHECK_INTERVAL=60 # Health check interval in seconds
 1. Set up environment variables
 2. Install dependencies:
    ```bash
-   npm install
+   pnpm install
    ```
 3. Start the monitor:
    ```bash
-   npm run start
+   pnpm run dev
    ```
 
 ## Error Handling
