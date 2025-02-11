@@ -4,7 +4,7 @@
       "deposit_id": "0",
       "owner_address": "0x8bcd2f26DABe6E605B040b3Bdf3b68d5EF7CbA25",
       "delegatee_address": "0x8bcd2f26DABe6E605B040b3Bdf3b68d5EF7CbA25",
-      "amount": 5e+22,
+      "amount": 5e22,
       "created_at": "2025-02-11T16:26:36.344Z",
       "updated_at": "2025-02-11T16:26:36.344Z"
     },
@@ -12,7 +12,7 @@
       "deposit_id": "1",
       "owner_address": "0xE8D848debB3A3e12AA815b15900c8E020B863F31",
       "delegatee_address": "0xE8D848debB3A3e12AA815b15900c8E020B863F31",
-      "amount": 5e+26,
+      "amount": 5e26,
       "created_at": "2025-02-11T16:27:03.032Z",
       "updated_at": "2025-02-11T16:27:03.032Z"
     },
@@ -20,7 +20,7 @@
       "deposit_id": "2",
       "owner_address": "0x8bcd2f26DABe6E605B040b3Bdf3b68d5EF7CbA25",
       "delegatee_address": "0x8bcd2f26DABe6E605B040b3Bdf3b68d5EF7CbA25",
-      "amount": 1.2e+22,
+      "amount": 1.2e22,
       "created_at": "2025-02-11T16:27:05.172Z",
       "updated_at": "2025-02-11T16:27:05.172Z"
     },
@@ -28,7 +28,7 @@
       "deposit_id": "3",
       "owner_address": "0x489e3E846bB550CB7b023108ce071bB39Fd23Cd8",
       "delegatee_address": "0x489e3E846bB550CB7b023108ce071bB39Fd23Cd8",
-      "amount": 1e+26,
+      "amount": 1e26,
       "created_at": "2025-02-11T16:28:24.108Z",
       "updated_at": "2025-02-11T16:28:24.108Z"
     }

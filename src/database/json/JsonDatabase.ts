@@ -39,10 +39,11 @@ export class JsonDatabase implements IDatabase {
 
   // Deposits
   async createDeposit(deposit: Deposit): Promise<void> {
+    const now = new Date().toISOString();
     this.data.deposits[deposit.deposit_id] = {
       ...deposit,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      created_at: now,
+      updated_at: now,
     };
     await this.saveToFile();
   }
@@ -60,17 +61,22 @@ export class JsonDatabase implements IDatabase {
     depositId: string,
     update: Partial<Omit<Deposit, 'deposit_id'>>,
   ): Promise<void> {
-    let deposit = this.data.deposits[depositId];
+    const deposit = this.data.deposits[depositId];
     if (!deposit) throw new Error(`Deposit ${depositId} not found`);
 
-    deposit = {
-      ...deposit,
-      ...update,
-      updated_at: new Date().toISOString(),
-    };
-    this.data.deposits[depositId] = deposit;
+    // Only update if there are actual changes
+    const hasChanges = Object.entries(update).some(
+      ([key, value]) => deposit[key as keyof typeof deposit] !== value,
+    );
 
-    await this.saveToFile();
+    if (hasChanges) {
+      this.data.deposits[depositId] = {
+        ...deposit,
+        ...update,
+        updated_at: new Date().toISOString(),
+      };
+      await this.saveToFile();
+    }
   }
 
   async getDeposit(depositId: string): Promise<Deposit | null> {
@@ -93,7 +99,9 @@ export class JsonDatabase implements IDatabase {
     console.log('Updated checkpoint:', checkpoint);
   }
 
-  async getCheckpoint(componentType: string): Promise<ProcessingCheckpoint | null> {
+  async getCheckpoint(
+    componentType: string,
+  ): Promise<ProcessingCheckpoint | null> {
     console.log('Fetching checkpoint for component:', componentType);
     console.log('Current checkpoints in DB:', this.data.checkpoints);
     const checkpoint = this.data.checkpoints[componentType] || null;

@@ -66,7 +66,8 @@ export class StakerMonitor {
       await this.db.updateCheckpoint({
         component_type: 'staker-monitor',
         last_block_number: this.config.startBlock,
-        block_hash: '0x0000000000000000000000000000000000000000000000000000000000000000',
+        block_hash:
+          '0x0000000000000000000000000000000000000000000000000000000000000000',
         last_update: new Date().toISOString(),
       });
       this.logger.info('Starting from initial block', {
@@ -157,23 +158,25 @@ export class StakerMonitor {
   ): Promise<void> {
     this.logger.info('Querying events for block range', { fromBlock, toBlock });
 
-    const [depositedEvents, withdrawnEvents, alteredEvents] = await Promise.all([
-      this.contract.queryFilter(
-        this.contract.filters.StakeDeposited!(),
-        fromBlock,
-        toBlock,
-      ),
-      this.contract.queryFilter(
-        this.contract.filters.StakeWithdrawn!(),
-        fromBlock,
-        toBlock,
-      ),
-      this.contract.queryFilter(
-        this.contract.filters.DelegateeAltered!(),
-        fromBlock,
-        toBlock,
-      ),
-    ]);
+    const [depositedEvents, withdrawnEvents, alteredEvents] = await Promise.all(
+      [
+        this.contract.queryFilter(
+          this.contract.filters.StakeDeposited!(),
+          fromBlock,
+          toBlock,
+        ),
+        this.contract.queryFilter(
+          this.contract.filters.StakeWithdrawn!(),
+          fromBlock,
+          toBlock,
+        ),
+        this.contract.queryFilter(
+          this.contract.filters.DelegateeAltered!(),
+          fromBlock,
+          toBlock,
+        ),
+      ],
+    );
 
     this.logger.info('Events found', {
       depositedCount: depositedEvents.length,
