@@ -50,11 +50,29 @@ export class StakerMonitor {
       address: this.config.stakerAddress,
     });
 
-    // Always start from the configured start block
-    this.lastProcessedBlock = this.config.startBlock;
-    this.logger.info('Starting from block', {
-      blockNumber: this.lastProcessedBlock,
-    });
+    // Check for existing checkpoint first
+    const checkpoint = await this.db.getCheckpoint('staker-monitor');
+
+    if (checkpoint) {
+      this.lastProcessedBlock = checkpoint.last_block_number;
+      this.logger.info('Resuming from checkpoint', {
+        blockNumber: this.lastProcessedBlock,
+        blockHash: checkpoint.block_hash,
+        lastUpdate: checkpoint.last_update,
+      });
+    } else {
+      // Initialize with start block if no checkpoint exists
+      this.lastProcessedBlock = this.config.startBlock;
+      await this.db.updateCheckpoint({
+        component_type: 'staker-monitor',
+        last_block_number: this.config.startBlock,
+        block_hash: '0x0000000000000000000000000000000000000000000000000000000000000000',
+        last_update: new Date().toISOString(),
+      });
+      this.logger.info('Starting from initial block', {
+        blockNumber: this.lastProcessedBlock,
+      });
+    }
 
     this.processingPromise = this.processLoop();
   }

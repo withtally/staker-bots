@@ -90,11 +90,14 @@ export class JsonDatabase implements IDatabase {
       last_update: new Date().toISOString(),
     };
     await this.saveToFile();
+    console.log('Updated checkpoint:', checkpoint);
   }
 
-  async getCheckpoint(
-    componentType: string,
-  ): Promise<ProcessingCheckpoint | null> {
-    return this.data.checkpoints[componentType] || null;
+  async getCheckpoint(componentType: string): Promise<ProcessingCheckpoint | null> {
+    console.log('Fetching checkpoint for component:', componentType);
+    console.log('Current checkpoints in DB:', this.data.checkpoints);
+    const checkpoint = this.data.checkpoints[componentType] || null;
+    console.log('Retrieved checkpoint result:', checkpoint);
+    return checkpoint;
   }
 }
