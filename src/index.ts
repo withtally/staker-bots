@@ -1,18 +1,11 @@
-import { DatabaseWrapper } from './database';
+// Re-export everything from monitor
+export * from './monitor';
 
-async function main() {
-  console.warn('Starting staker bot...');
+// Import and run the monitor's main function
+import { main } from './monitor';
 
-  const db = new DatabaseWrapper();
-
-  await db.createDeposit({
-    deposit_id: '123',
-    owner_address: '0x...',
-    delegatee_address: '0x...',
-  });
-}
-
-main().catch((error) => {
+// Run the monitor
+main().catch((error: unknown) => {
   console.error('Fatal error:', error);
   process.exit(1);
 });

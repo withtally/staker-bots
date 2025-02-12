@@ -2,9 +2,10 @@
 CREATE TABLE IF NOT EXISTS deposits (
     deposit_id TEXT PRIMARY KEY,
     owner_address TEXT NOT NULL,
-    delegatee_address TEXT NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()) NOT NULL,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()) NOT NULL
+    delegatee_address TEXT,
+    amount NUMERIC NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::TEXT, NOW()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::TEXT, NOW()) NOT NULL
 );
 
 -- Create processing_checkpoints table

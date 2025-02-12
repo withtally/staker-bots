@@ -6,13 +6,11 @@
   "scripts": {
     "start": "tsx src/index.ts",
     "dev": "tsx watch src/index.ts",
+    "monitor": "tsx src/monitor/index.ts",
+    "monitor:dev": "tsx watch src/monitor/index.ts",
     "lint": "eslint . --ext .ts",
     "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "db:setup": "tsx src/database/supabase/migrations/run.ts",
-    "db:start": "supabase start",
-    "db:stop": "supabase stop",
-    "db:reset": "supabase db reset"
+    "format:check": "prettier --check ."
   },
   "keywords": [],
   "author": "",
