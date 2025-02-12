@@ -2,17 +2,34 @@ import { ICalculatorStrategy } from '../interfaces/ICalculatorStrategy';
 import { ScoreEvent } from '../interfaces/types';
 import { DatabaseWrapper } from '@/database/DatabaseWrapper';
 import { ConsoleLogger, Logger } from '@/monitor/logging';
-import { ScoreEvent as DbScoreEvent } from '@/database/interfaces/types';
+import { ethers } from 'ethers';
+import { CONFIG, createProvider } from '@/config';
+import { REWARD_CALCULATOR_ABI } from '../constants';
+// import { ScoreEvent as DbScoreEvent } from '@/database/interfaces/types';
 
-export class BaseCalculatorStrategy implements ICalculatorStrategy {
+export class BinaryEligibilityOracleEarningPowerCalculator
+  implements ICalculatorStrategy
+{
   private db: DatabaseWrapper;
   private logger: Logger;
   private scoreCache: Map<string, bigint>;
+  private readonly contract: ethers.Contract;
 
   constructor(db: DatabaseWrapper) {
     this.db = db;
     this.logger = new ConsoleLogger('info');
     this.scoreCache = new Map();
+
+    // Initialize contract
+    const provider = createProvider();
+    if (!CONFIG.monitor.rewardCalculatorAddress) {
+      throw new Error('REWARD_CALCULATOR_ADDRESS is not configured');
+    }
+    this.contract = new ethers.Contract(
+      CONFIG.monitor.rewardCalculatorAddress,
+      REWARD_CALCULATOR_ABI,
+      provider,
+    );
   }
 
   async getEarningPower(
@@ -20,8 +37,19 @@ export class BaseCalculatorStrategy implements ICalculatorStrategy {
     staker: string,
     delegatee: string,
   ): Promise<bigint> {
-    const score = await this.getDelegateeScore(delegatee);
-    return amountStaked * score;
+    try {
+      const earningPower = await (this.contract as any).getEarningPower(
+        amountStaked,
+        staker,
+        delegatee,
+      );
+      return BigInt(earningPower.toString());
+    } catch (error) {
+      this.logger.error('Error getting earning power from contract:', {
+        error,
+      });
+      throw error;
+    }
   }
 
   async getNewEarningPower(
@@ -30,24 +58,37 @@ export class BaseCalculatorStrategy implements ICalculatorStrategy {
     delegatee: string,
     oldEarningPower: bigint,
   ): Promise<[bigint, boolean]> {
-    const newEarningPower = await this.getEarningPower(
-      amountStaked,
-      staker,
-      delegatee,
-    );
-    const isBumpable = newEarningPower > oldEarningPower;
-
-    return [newEarningPower, isBumpable];
+    try {
+      const [newEarningPower, isBumpable] = await (
+        this.contract as any
+      ).getNewEarningPower(amountStaked, staker, delegatee, oldEarningPower);
+      return [BigInt(newEarningPower.toString()), isBumpable];
+    } catch (error) {
+      this.logger.error('Error getting new earning power from contract:', {
+        error,
+      });
+      throw error;
+    }
   }
 
   async processScoreEvents(fromBlock: number, toBlock: number): Promise<void> {
     try {
-      // Get events from blockchain (implementation depends on your provider setup)
-      const events = await this.getScoreEvents(fromBlock, toBlock);
+      // Get events from blockchain
+      const events = await this.contract.queryFilter(
+        (this.contract as any).filters.ScoreUpdated(),
+        fromBlock,
+        toBlock,
+      );
 
       // Process events in batch
       for (const event of events) {
-        await this.processScoreEvent(event);
+        const typedEvent = event as ethers.EventLog;
+        const { delegatee, score, blockNumber } = typedEvent.args;
+        await this.processScoreEvent({
+          delegatee,
+          score: BigInt(score.toString()),
+          block_number: blockNumber,
+        });
       }
 
       // Update processing checkpoint

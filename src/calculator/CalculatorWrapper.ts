@@ -1,5 +1,5 @@
 import { ICalculatorStrategy } from './interfaces/ICalculatorStrategy';
-import { BaseCalculatorStrategy } from './strategies/BaseCalculatorStrategy';
+import { BinaryEligibilityOracleEarningPowerCalculator } from './strategies/BinaryEligibilityOracleEarningPowerCalculator';
 import { CalculatorConfig } from './interfaces/types';
 import { DatabaseWrapper } from '@/database/DatabaseWrapper';
 
@@ -8,13 +8,13 @@ export class CalculatorWrapper implements ICalculatorStrategy {
 
   constructor(
     db: DatabaseWrapper,
-    config: CalculatorConfig = { type: 'base' },
+    config: CalculatorConfig = { type: 'binary' },
   ) {
-    // Initialize with base strategy by default
-    this.strategy = new BaseCalculatorStrategy(db);
+    // Initialize with BinaryEligibilityOracleEarningPowerCalculator strategy by default
+    this.strategy = new BinaryEligibilityOracleEarningPowerCalculator(db);
 
     // Can extend here to support other calculator types
-    if (config.type !== 'base') {
+    if (config.type !== 'binary') {
       throw new Error(`Calculator type ${config.type} not supported`);
     }
   }
