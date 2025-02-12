@@ -13,7 +13,8 @@ CREATE TABLE IF NOT EXISTS processing_checkpoints (
     component_type TEXT PRIMARY KEY,
     last_block_number BIGINT NOT NULL,
     block_hash TEXT NOT NULL,
-    last_update TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()) NOT NULL
+    last_update TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()) NOT NULL,
+    last_block BIGINT
 );
 
 -- Create indexes for better query performance
