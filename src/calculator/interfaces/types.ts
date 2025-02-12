@@ -1,3 +1,5 @@
+import { ethers } from 'ethers';
+
 export type ScoreEvent = {
   delegatee: string;
   score: bigint;
@@ -9,3 +11,28 @@ export type ScoreEvent = {
 export type CalculatorConfig = {
   type: 'base' | string; // Extensible for future calculator types
 };
+
+export interface IRewardCalculator {
+  getEarningPower(
+    amountStaked: bigint,
+    staker: string,
+    delegatee: string,
+  ): Promise<bigint>;
+
+  getNewEarningPower(
+    amountStaked: bigint,
+    staker: string,
+    delegatee: string,
+    oldEarningPower: bigint,
+  ): Promise<[bigint, boolean]>;
+
+  filters: {
+    ScoreUpdated: () => ethers.EventFilter;
+  };
+
+  queryFilter(
+    event: ethers.EventFilter,
+    fromBlock?: number,
+    toBlock?: number,
+  ): Promise<ethers.Log[]>;
+}

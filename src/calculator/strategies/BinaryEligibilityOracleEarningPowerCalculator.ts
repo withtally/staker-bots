@@ -1,5 +1,5 @@
 import { ICalculatorStrategy } from '../interfaces/ICalculatorStrategy';
-import { ScoreEvent } from '../interfaces/types';
+import { ScoreEvent, IRewardCalculator } from '../interfaces/types';
 import { DatabaseWrapper } from '@/database/DatabaseWrapper';
 import { ConsoleLogger, Logger } from '@/monitor/logging';
 import { ethers } from 'ethers';
@@ -13,7 +13,7 @@ export class BinaryEligibilityOracleEarningPowerCalculator
   private db: DatabaseWrapper;
   private logger: Logger;
   private scoreCache: Map<string, bigint>;
-  private readonly contract: ethers.Contract;
+  private readonly contract: IRewardCalculator;
 
   constructor(db: DatabaseWrapper) {
     this.db = db;
@@ -29,7 +29,7 @@ export class BinaryEligibilityOracleEarningPowerCalculator
       CONFIG.monitor.rewardCalculatorAddress,
       REWARD_CALCULATOR_ABI,
       provider,
-    );
+    ) as unknown as IRewardCalculator;
   }
 
   async getEarningPower(
@@ -38,12 +38,12 @@ export class BinaryEligibilityOracleEarningPowerCalculator
     delegatee: string,
   ): Promise<bigint> {
     try {
-      const earningPower = await (this.contract as any).getEarningPower(
+      const earningPower = await this.contract.getEarningPower(
         amountStaked,
         staker,
         delegatee,
       );
-      return BigInt(earningPower.toString());
+      return earningPower;
     } catch (error) {
       this.logger.error('Error getting earning power from contract:', {
         error,
@@ -59,10 +59,12 @@ export class BinaryEligibilityOracleEarningPowerCalculator
     oldEarningPower: bigint,
   ): Promise<[bigint, boolean]> {
     try {
-      const [newEarningPower, isBumpable] = await (
-        this.contract as any
-      ).getNewEarningPower(amountStaked, staker, delegatee, oldEarningPower);
-      return [BigInt(newEarningPower.toString()), isBumpable];
+      return await this.contract.getNewEarningPower(
+        amountStaked,
+        staker,
+        delegatee,
+        oldEarningPower,
+      );
     } catch (error) {
       this.logger.error('Error getting new earning power from contract:', {
         error,
@@ -75,7 +77,7 @@ export class BinaryEligibilityOracleEarningPowerCalculator
     try {
       // Get events from blockchain
       const events = await this.contract.queryFilter(
-        (this.contract as any).filters.ScoreUpdated(),
+        this.contract.filters.ScoreUpdated(),
         fromBlock,
         toBlock,
       );
