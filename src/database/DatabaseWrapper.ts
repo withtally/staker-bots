@@ -30,8 +30,10 @@ export class DatabaseWrapper implements IDatabase {
         deleteScoreEvent: supabaseScoreEvents.deleteScoreEvent,
         getScoreEvent: supabaseScoreEvents.getScoreEvent,
         getLatestScoreEvent: supabaseScoreEvents.getLatestScoreEvent,
-        getScoreEventsByBlockRange: supabaseScoreEvents.getScoreEventsByBlockRange,
-        deleteScoreEventsByBlockRange: supabaseScoreEvents.deleteScoreEventsByBlockRange
+        getScoreEventsByBlockRange:
+          supabaseScoreEvents.getScoreEventsByBlockRange,
+        deleteScoreEventsByBlockRange:
+          supabaseScoreEvents.deleteScoreEventsByBlockRange,
       };
     }
   }
@@ -79,12 +81,15 @@ export class DatabaseWrapper implements IDatabase {
   async updateScoreEvent(
     delegatee: string,
     blockNumber: number,
-    update: Partial<ScoreEvent>
+    update: Partial<ScoreEvent>,
   ): Promise<void> {
     return this.db.updateScoreEvent(delegatee, blockNumber, update);
   }
 
-  async deleteScoreEvent(delegatee: string, blockNumber: number): Promise<void> {
+  async deleteScoreEvent(
+    delegatee: string,
+    blockNumber: number,
+  ): Promise<void> {
     return this.db.deleteScoreEvent(delegatee, blockNumber);
   }
 

@@ -8,7 +8,7 @@ export class CalculatorWrapper implements ICalculatorStrategy {
 
   constructor(
     db: DatabaseWrapper,
-    config: CalculatorConfig = { type: 'base' }
+    config: CalculatorConfig = { type: 'base' },
   ) {
     // Initialize with base strategy by default
     this.strategy = new BaseCalculatorStrategy(db);
@@ -22,7 +22,7 @@ export class CalculatorWrapper implements ICalculatorStrategy {
   async getEarningPower(
     amountStaked: bigint,
     staker: string,
-    delegatee: string
+    delegatee: string,
   ): Promise<bigint> {
     return this.strategy.getEarningPower(amountStaked, staker, delegatee);
   }
@@ -31,13 +31,13 @@ export class CalculatorWrapper implements ICalculatorStrategy {
     amountStaked: bigint,
     staker: string,
     delegatee: string,
-    oldEarningPower: bigint
+    oldEarningPower: bigint,
   ): Promise<[bigint, boolean]> {
     return this.strategy.getNewEarningPower(
       amountStaked,
       staker,
       delegatee,
-      oldEarningPower
+      oldEarningPower,
     );
   }
 

@@ -132,12 +132,14 @@ export class JsonDatabase implements IDatabase {
   async updateScoreEvent(
     delegatee: string,
     blockNumber: number,
-    update: Partial<ScoreEvent>
+    update: Partial<ScoreEvent>,
   ): Promise<void> {
     const delegateeEvents = this.data.score_events[delegatee];
     const event = delegateeEvents?.[blockNumber];
     if (!event || !delegateeEvents) {
-      throw new Error(`Score event not found for delegatee ${delegatee} at block ${blockNumber}`);
+      throw new Error(
+        `Score event not found for delegatee ${delegatee} at block ${blockNumber}`,
+      );
     }
 
     delegateeEvents[blockNumber] = {
@@ -148,10 +150,15 @@ export class JsonDatabase implements IDatabase {
     await this.saveToFile();
   }
 
-  async deleteScoreEvent(delegatee: string, blockNumber: number): Promise<void> {
+  async deleteScoreEvent(
+    delegatee: string,
+    blockNumber: number,
+  ): Promise<void> {
     const delegateeEvents = this.data.score_events[delegatee];
     if (!delegateeEvents?.[blockNumber]) {
-      throw new Error(`Score event not found for delegatee ${delegatee} at block ${blockNumber}`);
+      throw new Error(
+        `Score event not found for delegatee ${delegatee} at block ${blockNumber}`,
+      );
     }
 
     delete delegateeEvents[blockNumber];

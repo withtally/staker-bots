@@ -1,8 +1,6 @@
-import { BigNumber } from 'ethers';
-
 export type ScoreEvent = {
   delegatee: string;
-  score: BigNumber;
+  score: bigint;
   block_number: number;
   created_at?: string;
   updated_at?: string;

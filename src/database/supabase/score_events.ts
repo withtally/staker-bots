@@ -16,7 +16,7 @@ export async function createScoreEvent(event: ScoreEvent): Promise<void> {
 export async function updateScoreEvent(
   delegatee: string,
   blockNumber: number,
-  update: Partial<ScoreEvent>
+  update: Partial<ScoreEvent>,
 ): Promise<void> {
   const { error } = await supabase
     .from('score_events')

@@ -18,7 +18,7 @@ export class BaseCalculatorStrategy implements ICalculatorStrategy {
   async getEarningPower(
     amountStaked: bigint,
     staker: string,
-    delegatee: string
+    delegatee: string,
   ): Promise<bigint> {
     const score = await this.getDelegateeScore(delegatee);
     return amountStaked * score;
@@ -28,9 +28,13 @@ export class BaseCalculatorStrategy implements ICalculatorStrategy {
     amountStaked: bigint,
     staker: string,
     delegatee: string,
-    oldEarningPower: bigint
+    oldEarningPower: bigint,
   ): Promise<[bigint, boolean]> {
-    const newEarningPower = await this.getEarningPower(amountStaked, staker, delegatee);
+    const newEarningPower = await this.getEarningPower(
+      amountStaked,
+      staker,
+      delegatee,
+    );
     const isBumpable = newEarningPower > oldEarningPower;
 
     return [newEarningPower, isBumpable];
@@ -50,10 +54,10 @@ export class BaseCalculatorStrategy implements ICalculatorStrategy {
       await this.db.updateCheckpoint({
         component_type: 'calculator',
         last_block_number: toBlock,
-        block_hash: '0x0000000000000000000000000000000000000000000000000000000000000000',
-        last_update: new Date().toISOString()
+        block_hash:
+          '0x0000000000000000000000000000000000000000000000000000000000000000',
+        last_update: new Date().toISOString(),
       });
-
     } catch (error) {
       this.logger.error('Error processing score events:', { error });
       throw error;
@@ -64,7 +68,7 @@ export class BaseCalculatorStrategy implements ICalculatorStrategy {
     this.scoreCache.set(event.delegatee, event.score);
     await this.db.createScoreEvent({
       ...event,
-      score: event.score.toString()  // Convert bigint to string for database
+      score: event.score.toString(), // Convert bigint to string for database
     });
   }
 
@@ -80,13 +84,21 @@ export class BaseCalculatorStrategy implements ICalculatorStrategy {
     return score;
   }
 
-  private async getLatestScoreEvent(delegatee: string): Promise<ScoreEvent | null> {
+  private async getLatestScoreEvent(
+    delegatee: string,
+  ): Promise<ScoreEvent | null> {
     const dbEvent = await this.db.getLatestScoreEvent(delegatee);
     return dbEvent ? { ...dbEvent, score: BigInt(dbEvent.score) } : null;
   }
 
-  private async getScoreEvents(fromBlock: number, toBlock: number): Promise<ScoreEvent[]> {
-    const dbEvents = await this.db.getScoreEventsByBlockRange(fromBlock, toBlock);
-    return dbEvents.map(e => ({ ...e, score: BigInt(e.score) }));
+  private async getScoreEvents(
+    fromBlock: number,
+    toBlock: number,
+  ): Promise<ScoreEvent[]> {
+    const dbEvents = await this.db.getScoreEventsByBlockRange(
+      fromBlock,
+      toBlock,
+    );
+    return dbEvents.map((e) => ({ ...e, score: BigInt(e.score) }));
   }
 }
