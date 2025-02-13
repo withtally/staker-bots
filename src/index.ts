@@ -143,9 +143,12 @@ async function runCalculator(database: DatabaseWrapper) {
       const lastCheckpoint = await database.getCheckpoint('calculator');
       logger.info('Calculator Status:', {
         isRunning: status.isRunning,
-        lastProcessedBlock: lastCheckpoint?.last_block_number ?? status.lastProcessedBlock,
+        lastProcessedBlock:
+          lastCheckpoint?.last_block_number ?? status.lastProcessedBlock,
         currentBlock,
-        processingLag: currentBlock - (lastCheckpoint?.last_block_number ?? status.lastProcessedBlock),
+        processingLag:
+          currentBlock -
+          (lastCheckpoint?.last_block_number ?? status.lastProcessedBlock),
       });
     } catch (error) {
       logger.error('Calculator health check failed:', { error });
@@ -162,8 +165,13 @@ async function main() {
       type: CONFIG.monitor.databaseType,
     });
 
-    const components = (process.env.COMPONENTS || '').split(',').map(c => c.trim());
-    const runningComponents: { monitor?: StakerMonitor; calculator?: CalculatorWrapper } = {};
+    const components = (process.env.COMPONENTS || '')
+      .split(',')
+      .map((c) => c.trim());
+    const runningComponents: {
+      monitor?: StakerMonitor;
+      calculator?: CalculatorWrapper;
+    } = {};
 
     // Start components based on configuration
     if (components.includes('monitor')) {
@@ -177,7 +185,9 @@ async function main() {
     }
 
     if (Object.keys(runningComponents).length === 0) {
-      throw new Error('No components configured to run. Set COMPONENTS env var.');
+      throw new Error(
+        'No components configured to run. Set COMPONENTS env var.',
+      );
     }
 
     // Handle shutdown gracefully
@@ -200,7 +210,6 @@ async function main() {
 
     process.on('SIGTERM', () => shutdown('SIGTERM'));
     process.on('SIGINT', () => shutdown('SIGINT'));
-
   } catch (error) {
     logger.error('Fatal error:', { error });
     process.exit(1);

@@ -15,7 +15,10 @@ export class CalculatorWrapper implements ICalculatorStrategy {
     config: CalculatorConfig = { type: 'binary' },
   ) {
     // Initialize with BinaryEligibilityOracleEarningPowerCalculator strategy by default
-    this.strategy = new BinaryEligibilityOracleEarningPowerCalculator(db, provider);
+    this.strategy = new BinaryEligibilityOracleEarningPowerCalculator(
+      db,
+      provider,
+    );
     this.isRunning = false;
     this.lastProcessedBlock = 0;
 

@@ -65,12 +65,13 @@ export class BinaryEligibilityOracleEarningPowerCalculator
     oldEarningPower: bigint,
   ): Promise<[bigint, boolean]> {
     try {
-      const [newEarningPower, isBumpable] = await this.contract.getNewEarningPower(
-        amountStaked,
-        staker,
-        delegatee,
-        oldEarningPower,
-      );
+      const [newEarningPower, isBumpable] =
+        await this.contract.getNewEarningPower(
+          amountStaked,
+          staker,
+          delegatee,
+          oldEarningPower,
+        );
       return [BigInt(newEarningPower.toString()), isBumpable];
     } catch (error) {
       this.logger.error('Error getting new earning power from contract:', {
@@ -99,24 +100,24 @@ export class BinaryEligibilityOracleEarningPowerCalculator
         address: CONFIG.monitor.rewardCalculatorAddress,
         topics: filter.topics,
         fromBlock,
-        toBlock
+        toBlock,
       });
 
       // Try getting events with a wider block range for testing
       const events = await this.contract.queryFilter(
         filter,
         fromBlock - 100, // Look back 100 blocks
-        toBlock + 100    // Look forward 100 blocks
+        toBlock + 100, // Look forward 100 blocks
       );
 
       this.logger.info('Raw events from contract:', {
         eventCount: events.length,
-        events: events.map(e => ({
+        events: events.map((e) => ({
           address: e.address?.toLowerCase(),
           topics: e.topics,
           data: e.data,
           blockNumber: e.blockNumber,
-        }))
+        })),
       });
 
       this.logger.info('Processing score events', {
@@ -147,7 +148,9 @@ export class BinaryEligibilityOracleEarningPowerCalculator
       await this.db.updateCheckpoint({
         component_type: 'calculator',
         last_block_number: toBlock,
-        block_hash: block.hash ?? '0x0000000000000000000000000000000000000000000000000000000000000000',
+        block_hash:
+          block.hash ??
+          '0x0000000000000000000000000000000000000000000000000000000000000000',
         last_update: new Date().toISOString(),
       });
 

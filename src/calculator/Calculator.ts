@@ -53,7 +53,8 @@ export class Calculator {
       await this.db.updateCheckpoint({
         component_type: 'calculator',
         last_block_number: this.config.startBlock,
-        block_hash: '0x0000000000000000000000000000000000000000000000000000000000000000',
+        block_hash:
+          '0x0000000000000000000000000000000000000000000000000000000000000000',
         last_update: new Date().toISOString(),
       });
       this.logger.info('Starting from initial block', {

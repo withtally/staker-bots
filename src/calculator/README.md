@@ -9,12 +9,14 @@ The calculator monitors the `DelegateeScoreUpdated` events emitted by the Reward
 ## Components
 
 ### CalculatorWrapper
+
 - Main entry point for the calculator functionality
 - Implements strategy pattern to support different calculation methods
 - Manages calculator state (running/stopped)
 - Tracks last processed block
 
 ### BinaryEligibilityOracleEarningPowerCalculator
+
 - Default calculator strategy implementation
 - Monitors `DelegateeScoreUpdated` events
 - Calculates earning power based on stake amount and delegatee score
@@ -33,13 +35,14 @@ event DelegateeScoreUpdated(
 ## Database Schema
 
 Score events are stored in the database with the following structure:
+
 ```typescript
 type ScoreEvent = {
-    delegatee: string;        // Delegatee address
-    score: string;            // Current score (stored as string due to bigint)
-    block_number: number;     // Block where the event occurred
-    created_at?: string;      // Timestamp of database entry
-    updated_at?: string;      // Last update timestamp
+  delegatee: string; // Delegatee address
+  score: string; // Current score (stored as string due to bigint)
+  block_number: number; // Block where the event occurred
+  created_at?: string; // Timestamp of database entry
+  updated_at?: string; // Last update timestamp
 };
 ```
 
@@ -66,6 +69,7 @@ npm run start:all
 ### Health Checks
 
 The calculator includes built-in health monitoring:
+
 - Processing status (running/stopped)
 - Last processed block
 - Processing lag (current chain height - last processed block)
