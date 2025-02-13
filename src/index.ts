@@ -7,6 +7,28 @@ import { CalculatorWrapper } from './calculator/CalculatorWrapper';
 
 const logger = new ConsoleLogger('info');
 
+async function shutdown(signal: string) {
+  logger.info(`Received ${signal}. Starting graceful shutdown...`);
+  try {
+    if (runningComponents.monitor) {
+      await runningComponents.monitor.stop();
+    }
+    if (runningComponents.calculator) {
+      await runningComponents.calculator.stop();
+    }
+    logger.info('Shutdown completed successfully');
+    process.exit(0);
+  } catch (error) {
+    logger.error('Error during shutdown:', { error });
+    process.exit(1);
+  }
+}
+
+let runningComponents: {
+  monitor?: StakerMonitor;
+  calculator?: CalculatorWrapper;
+} = {};
+
 async function runMonitor(database: DatabaseWrapper) {
   const provider = createProvider();
 
@@ -168,10 +190,7 @@ async function main() {
     const components = (process.env.COMPONENTS || '')
       .split(',')
       .map((c) => c.trim());
-    const runningComponents: {
-      monitor?: StakerMonitor;
-      calculator?: CalculatorWrapper;
-    } = {};
+    runningComponents = {};
 
     // Start components based on configuration
     if (components.includes('monitor')) {
@@ -188,24 +207,6 @@ async function main() {
       throw new Error(
         'No components configured to run. Set COMPONENTS env var.',
       );
-    }
-
-    // Handle shutdown gracefully
-    async function shutdown(signal: string) {
-      logger.info(`Received ${signal}. Starting graceful shutdown...`);
-      try {
-        if (runningComponents.monitor) {
-          await runningComponents.monitor.stop();
-        }
-        if (runningComponents.calculator) {
-          await runningComponents.calculator.stop();
-        }
-        logger.info('Shutdown completed successfully');
-        process.exit(0);
-      } catch (error) {
-        logger.error('Error during shutdown:', { error });
-        process.exit(1);
-      }
     }
 
     process.on('SIGTERM', () => shutdown('SIGTERM'));

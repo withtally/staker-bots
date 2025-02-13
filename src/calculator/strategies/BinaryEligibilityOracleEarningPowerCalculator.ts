@@ -130,7 +130,7 @@ export class BinaryEligibilityOracleEarningPowerCalculator
       // Process events in batch
       for (const event of events) {
         const typedEvent = event as ethers.EventLog;
-        const { delegatee, oldScore, newScore } = typedEvent.args;
+        const { delegatee, newScore } = typedEvent.args;
         await this.processScoreEvent({
           delegatee,
           score: BigInt(newScore.toString()),
