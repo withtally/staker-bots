@@ -1,27 +1,30 @@
 import { ICalculatorStrategy } from '../interfaces/ICalculatorStrategy';
 import { ScoreEvent, IRewardCalculator } from '../interfaces/types';
-import { DatabaseWrapper } from '@/database/DatabaseWrapper';
+import { IDatabase } from '@/database';
 import { ConsoleLogger, Logger } from '@/monitor/logging';
 import { ethers } from 'ethers';
-import { CONFIG, createProvider } from '@/config';
+import { CONFIG } from '@/config';
 import { REWARD_CALCULATOR_ABI } from '../constants';
 // import { ScoreEvent as DbScoreEvent } from '@/database/interfaces/types';
 
 export class BinaryEligibilityOracleEarningPowerCalculator
   implements ICalculatorStrategy
 {
-  private db: DatabaseWrapper;
+  private db: IDatabase;
   private logger: Logger;
   private scoreCache: Map<string, bigint>;
   private readonly contract: IRewardCalculator;
+  private readonly provider: ethers.Provider;
+  private lastProcessedBlock: number;
 
-  constructor(db: DatabaseWrapper) {
+  constructor(db: IDatabase, provider: ethers.Provider) {
     this.db = db;
+    this.provider = provider;
     this.logger = new ConsoleLogger('info');
     this.scoreCache = new Map();
+    this.lastProcessedBlock = 0;
 
     // Initialize contract
-    const provider = createProvider();
     if (!CONFIG.monitor.rewardCalculatorAddress) {
       throw new Error('REWARD_CALCULATOR_ADDRESS is not configured');
     }
@@ -43,10 +46,13 @@ export class BinaryEligibilityOracleEarningPowerCalculator
         staker,
         delegatee,
       );
-      return earningPower;
+      return BigInt(earningPower.toString());
     } catch (error) {
       this.logger.error('Error getting earning power from contract:', {
         error,
+        staker,
+        delegatee,
+        amountStaked: amountStaked.toString(),
       });
       throw error;
     }
@@ -59,15 +65,20 @@ export class BinaryEligibilityOracleEarningPowerCalculator
     oldEarningPower: bigint,
   ): Promise<[bigint, boolean]> {
     try {
-      return await this.contract.getNewEarningPower(
+      const [newEarningPower, isBumpable] = await this.contract.getNewEarningPower(
         amountStaked,
         staker,
         delegatee,
         oldEarningPower,
       );
+      return [BigInt(newEarningPower.toString()), isBumpable];
     } catch (error) {
       this.logger.error('Error getting new earning power from contract:', {
         error,
+        staker,
+        delegatee,
+        amountStaked: amountStaked.toString(),
+        oldEarningPower: oldEarningPower.toString(),
       });
       throw error;
     }
@@ -75,44 +86,108 @@ export class BinaryEligibilityOracleEarningPowerCalculator
 
   async processScoreEvents(fromBlock: number, toBlock: number): Promise<void> {
     try {
-      // Get events from blockchain
-      const events = await this.contract.queryFilter(
-        this.contract.filters.ScoreUpdated(),
+      this.logger.info('Querying score events from contract', {
         fromBlock,
         toBlock,
+        contractAddress: CONFIG.monitor.rewardCalculatorAddress,
+      });
+
+      // Get events from blockchain
+      const filter = this.contract.filters.DelegateeScoreUpdated();
+
+      this.logger.info('Event filter details:', {
+        address: CONFIG.monitor.rewardCalculatorAddress,
+        topics: filter.topics,
+        fromBlock,
+        toBlock
+      });
+
+      // Try getting events with a wider block range for testing
+      const events = await this.contract.queryFilter(
+        filter,
+        fromBlock - 100, // Look back 100 blocks
+        toBlock + 100    // Look forward 100 blocks
       );
+
+      this.logger.info('Raw events from contract:', {
+        eventCount: events.length,
+        events: events.map(e => ({
+          address: e.address?.toLowerCase(),
+          topics: e.topics,
+          data: e.data,
+          blockNumber: e.blockNumber,
+        }))
+      });
+
+      this.logger.info('Processing score events', {
+        eventCount: events.length,
+        fromBlock,
+        toBlock,
+        contractAddress: CONFIG.monitor.rewardCalculatorAddress,
+      });
 
       // Process events in batch
       for (const event of events) {
         const typedEvent = event as ethers.EventLog;
-        const { delegatee, score, blockNumber } = typedEvent.args;
+        const { delegatee, oldScore, newScore } = typedEvent.args;
         await this.processScoreEvent({
           delegatee,
-          score: BigInt(score.toString()),
-          block_number: blockNumber,
+          score: BigInt(newScore.toString()),
+          block_number: typedEvent.blockNumber,
         });
+      }
+
+      // Get block hash for checkpoint
+      const block = await this.provider.getBlock(toBlock);
+      if (!block) {
+        throw new Error(`Block ${toBlock} not found`);
       }
 
       // Update processing checkpoint
       await this.db.updateCheckpoint({
         component_type: 'calculator',
         last_block_number: toBlock,
-        block_hash:
-          '0x0000000000000000000000000000000000000000000000000000000000000000',
+        block_hash: block.hash ?? '0x0000000000000000000000000000000000000000000000000000000000000000',
         last_update: new Date().toISOString(),
       });
+
+      this.lastProcessedBlock = toBlock;
+      this.logger.info('Score events processed successfully', {
+        processedEvents: events.length,
+        fromBlock,
+        toBlock,
+        blockHash: block.hash,
+      });
     } catch (error) {
-      this.logger.error('Error processing score events:', { error });
+      this.logger.error('Error processing score events:', {
+        error,
+        fromBlock,
+        toBlock,
+        contractAddress: CONFIG.monitor.rewardCalculatorAddress,
+      });
       throw error;
     }
   }
 
   private async processScoreEvent(event: ScoreEvent): Promise<void> {
-    this.scoreCache.set(event.delegatee, event.score);
-    await this.db.createScoreEvent({
-      ...event,
-      score: event.score.toString(), // Convert bigint to string for database
-    });
+    try {
+      this.scoreCache.set(event.delegatee, event.score);
+      await this.db.createScoreEvent({
+        ...event,
+        score: event.score.toString(), // Convert bigint to string for database
+      });
+      this.logger.debug('Score event processed', {
+        delegatee: event.delegatee,
+        score: event.score.toString(),
+        blockNumber: event.block_number,
+      });
+    } catch (error) {
+      this.logger.error('Error processing score event:', {
+        error,
+        event,
+      });
+      throw error;
+    }
   }
 
   private async getDelegateeScore(delegatee: string): Promise<bigint> {

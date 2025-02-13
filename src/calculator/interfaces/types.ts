@@ -12,6 +12,11 @@ export type CalculatorConfig = {
   type: 'base' | string; // Extensible for future calculator types
 };
 
+export type CalculatorStatus = {
+  isRunning: boolean;
+  lastProcessedBlock: number;
+};
+
 export interface IRewardCalculator {
   getEarningPower(
     amountStaked: bigint,
@@ -27,7 +32,7 @@ export interface IRewardCalculator {
   ): Promise<[bigint, boolean]>;
 
   filters: {
-    ScoreUpdated: () => ethers.EventFilter;
+    DelegateeScoreUpdated: () => ethers.EventFilter;
   };
 
   queryFilter(
