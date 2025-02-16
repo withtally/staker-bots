@@ -6,8 +6,12 @@
   "scripts": {
     "start": "tsx src/index.ts",
     "dev": "tsx watch src/index.ts",
-    "monitor": "tsx src/monitor/index.ts",
-    "monitor:dev": "tsx watch src/monitor/index.ts",
+    "start:monitor": "COMPONENTS=monitor tsx src/index.ts",
+    "start:calculator": "COMPONENTS=calculator tsx src/index.ts",
+    "start:all": "COMPONENTS=monitor,calculator tsx src/index.ts",
+    "dev:monitor": "COMPONENTS=monitor tsx watch src/index.ts",
+    "dev:calculator": "COMPONENTS=calculator tsx watch src/index.ts",
+    "dev:all": "COMPONENTS=monitor,calculator tsx watch src/index.ts",
     "lint": "eslint . --ext .ts",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

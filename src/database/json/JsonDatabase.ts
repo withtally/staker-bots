@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { IDatabase } from '../interfaces/IDatabase';
-import { Deposit, ProcessingCheckpoint } from '../interfaces/types';
+import { Deposit, ProcessingCheckpoint, ScoreEvent } from '../interfaces/types';
 import { ConsoleLogger, Logger } from '@/monitor/logging';
 
 export class JsonDatabase implements IDatabase {
@@ -10,6 +10,7 @@ export class JsonDatabase implements IDatabase {
   private data: {
     deposits: Record<string, Deposit>;
     checkpoints: Record<string, ProcessingCheckpoint>;
+    score_events: Record<string, Record<number, ScoreEvent>>;
   };
 
   constructor(dbPath = 'staker-monitor-db.json') {
@@ -18,6 +19,7 @@ export class JsonDatabase implements IDatabase {
     this.data = {
       deposits: {},
       checkpoints: {},
+      score_events: {},
     };
     this.logger.info('JsonDatabase initialized at:', { path: this.dbPath });
     this.initializeDb();
@@ -109,5 +111,115 @@ export class JsonDatabase implements IDatabase {
     const checkpoint = this.data.checkpoints[componentType] || null;
     this.logger.debug('Retrieved checkpoint:', { checkpoint });
     return checkpoint;
+  }
+
+  // Score Events
+  async createScoreEvent(event: ScoreEvent): Promise<void> {
+    if (!this.data.score_events[event.delegatee]) {
+      this.data.score_events[event.delegatee] = {};
+    }
+    const delegateeEvents = this.data.score_events[event.delegatee]!; // Now safe to use !
+
+    const now = new Date().toISOString();
+    delegateeEvents[event.block_number] = {
+      ...event,
+      created_at: now,
+      updated_at: now,
+    };
+    await this.saveToFile();
+  }
+
+  async updateScoreEvent(
+    delegatee: string,
+    blockNumber: number,
+    update: Partial<ScoreEvent>,
+  ): Promise<void> {
+    const delegateeEvents = this.data.score_events[delegatee];
+    const event = delegateeEvents?.[blockNumber];
+    if (!event || !delegateeEvents) {
+      throw new Error(
+        `Score event not found for delegatee ${delegatee} at block ${blockNumber}`,
+      );
+    }
+
+    delegateeEvents[blockNumber] = {
+      ...event,
+      ...update,
+      updated_at: new Date().toISOString(),
+    };
+    await this.saveToFile();
+  }
+
+  async deleteScoreEvent(
+    delegatee: string,
+    blockNumber: number,
+  ): Promise<void> {
+    const delegateeEvents = this.data.score_events[delegatee];
+    if (!delegateeEvents?.[blockNumber]) {
+      throw new Error(
+        `Score event not found for delegatee ${delegatee} at block ${blockNumber}`,
+      );
+    }
+
+    delete delegateeEvents[blockNumber];
+    if (Object.keys(delegateeEvents).length === 0) {
+      delete this.data.score_events[delegatee];
+    }
+    await this.saveToFile();
+  }
+
+  async getScoreEvent(
+    delegatee: string,
+    blockNumber: number,
+  ): Promise<ScoreEvent | null> {
+    return this.data.score_events[delegatee]?.[blockNumber] || null;
+  }
+
+  async getLatestScoreEvent(delegatee: string): Promise<ScoreEvent | null> {
+    const events = this.data.score_events[delegatee];
+    if (!events) return null;
+
+    const blockNumbers = Object.keys(events).map(Number);
+    if (blockNumbers.length === 0) return null;
+
+    const latestBlock = Math.max(...blockNumbers);
+    return events[latestBlock] || null;
+  }
+
+  async getScoreEventsByBlockRange(
+    fromBlock: number,
+    toBlock: number,
+  ): Promise<ScoreEvent[]> {
+    const events: ScoreEvent[] = [];
+
+    Object.values(this.data.score_events).forEach((delegateeEvents) => {
+      Object.entries(delegateeEvents).forEach(([blockStr, event]) => {
+        const blockNumber = Number(blockStr);
+        if (blockNumber >= fromBlock && blockNumber <= toBlock) {
+          events.push(event);
+        }
+      });
+    });
+
+    return events.sort((a, b) => a.block_number - b.block_number);
+  }
+
+  async deleteScoreEventsByBlockRange(
+    fromBlock: number,
+    toBlock: number,
+  ): Promise<void> {
+    Object.entries(this.data.score_events).forEach(([delegatee, events]) => {
+      Object.keys(events).forEach((blockStr) => {
+        const blockNumber = Number(blockStr);
+        if (blockNumber >= fromBlock && blockNumber <= toBlock) {
+          delete events[blockNumber];
+        }
+      });
+      // Clean up empty delegatee entries
+      if (Object.keys(events).length === 0) {
+        delete this.data.score_events[delegatee];
+      }
+    });
+    await this.saveToFile();
   }
 }
