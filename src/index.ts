@@ -4,6 +4,7 @@ import { ConsoleLogger } from '@/monitor/logging';
 import { StakerMonitor } from './monitor/StakerMonitor';
 import { createMonitorConfig } from './monitor/constants';
 import { CalculatorWrapper } from './calculator/CalculatorWrapper';
+import { ProfitabilityEngineWrapper } from './profitability';
 
 const logger = new ConsoleLogger('info');
 
@@ -16,6 +17,9 @@ async function shutdown(signal: string) {
     if (runningComponents.calculator) {
       await runningComponents.calculator.stop();
     }
+    if (runningComponents.profitabilityEngine) {
+      await runningComponents.profitabilityEngine.stop();
+    }
     logger.info('Shutdown completed successfully');
     process.exit(0);
   } catch (error) {
@@ -27,6 +31,7 @@ async function shutdown(signal: string) {
 let runningComponents: {
   monitor?: StakerMonitor;
   calculator?: CalculatorWrapper;
+  profitabilityEngine?: ProfitabilityEngineWrapper;
 } = {};
 
 async function runMonitor(database: DatabaseWrapper) {
@@ -180,6 +185,45 @@ async function runCalculator(database: DatabaseWrapper) {
   return calculator;
 }
 
+async function runProfitabilityEngine(database: DatabaseWrapper) {
+  const provider = createProvider();
+
+  // Test provider connection
+  try {
+    await provider.getNetwork();
+  } catch (error) {
+    logger.error('Failed to connect to provider:', { error });
+    throw error;
+  }
+
+  logger.info('Initializing profitability engine with staker contract:', {
+    address: CONFIG.monitor.stakerAddress,
+  });
+
+  const engine = new ProfitabilityEngineWrapper(
+    database,
+    provider,
+    CONFIG.monitor.stakerAddress,
+  );
+  await engine.start();
+
+  // Set up health check logging
+  setInterval(async () => {
+    try {
+      const status = await engine.getStatus();
+      logger.info('Profitability Engine Status:', {
+        isRunning: status.isRunning,
+        lastGasPrice: status.lastGasPrice.toString(),
+        lastUpdateTimestamp: new Date(status.lastUpdateTimestamp).toISOString(),
+      });
+    } catch (error) {
+      logger.error('Profitability engine health check failed:', { error });
+    }
+  }, CONFIG.monitor.healthCheckInterval * 1000);
+
+  return engine;
+}
+
 async function main() {
   try {
     // Initialize database
@@ -201,6 +245,12 @@ async function main() {
     if (components.includes('calculator')) {
       logger.info('Starting calculator...');
       runningComponents.calculator = await runCalculator(database);
+    }
+
+    if (components.includes('profitability')) {
+      logger.info('Starting profitability engine...');
+      runningComponents.profitabilityEngine =
+        await runProfitabilityEngine(database);
     }
 
     if (Object.keys(runningComponents).length === 0) {
