@@ -61,7 +61,9 @@ export class BaseProfitabilityEngine implements IProfitabilityEngine {
   async checkProfitability(deposit: Deposit): Promise<ProfitabilityCheck> {
     try {
       // Validate deposit exists by checking owner
-      const deposits = this.stakerContract['deposits'] as (depositId: string) => Promise<{
+      const deposits = this.stakerContract['deposits'] as (
+        depositId: string,
+      ) => Promise<{
         owner: string;
         balance: bigint;
         earningPower: bigint;
@@ -71,7 +73,9 @@ export class BaseProfitabilityEngine implements IProfitabilityEngine {
 
       const depositInfo = await deposits(deposit.deposit_id);
       if (!depositInfo.owner) {
-        this.logger.error('Deposit does not exist:', { depositId: deposit.deposit_id });
+        this.logger.error('Deposit does not exist:', {
+          depositId: deposit.deposit_id,
+        });
         return this.createFailedProfitabilityCheck('calculatorEligible');
       }
 
@@ -88,7 +92,8 @@ export class BaseProfitabilityEngine implements IProfitabilityEngine {
       const tipOptimization = await this.calculateOptimalTip(deposit, gasPrice);
 
       // Check unclaimed rewards rules based on earning power change
-      const isEarningPowerIncrease = requirements.newEarningPower > deposit.earning_power!;
+      const isEarningPowerIncrease =
+        requirements.newEarningPower > deposit.earning_power!;
 
       if (isEarningPowerIncrease) {
         // For power increases: unclaimedRewards must be >= requestedTip
@@ -97,13 +102,17 @@ export class BaseProfitabilityEngine implements IProfitabilityEngine {
         }
       } else {
         // For power decreases: (unclaimedRewards - requestedTip) must be >= maxBumpTip
-        if ((requirements.unclaimedRewards - tipOptimization.optimalTip) < requirements.maxBumpTip) {
+        if (
+          requirements.unclaimedRewards - tipOptimization.optimalTip <
+          requirements.maxBumpTip
+        ) {
           return this.createFailedProfitabilityCheck('hasEnoughRewards');
         }
       }
 
       // Check if operation is profitable
-      const isProfitable = tipOptimization.expectedProfit >= this.config.minProfitMargin;
+      const isProfitable =
+        tipOptimization.expectedProfit >= this.config.minProfitMargin;
       if (!isProfitable) {
         return this.createFailedProfitabilityCheck('isProfitable');
       }
