@@ -79,9 +79,6 @@ export class BaseProfitabilityEngine implements IProfitabilityEngine {
         return this.createFailedProfitabilityCheck('calculatorEligible');
       }
 
-      // Get current gas price with buffer
-      const gasPrice = await this.getGasPriceWithBuffer();
-
       // Check bump requirements
       const requirements = await this.validateBumpRequirements(deposit);
       if (!requirements.isEligible) {
@@ -89,7 +86,10 @@ export class BaseProfitabilityEngine implements IProfitabilityEngine {
       }
 
       // Calculate optimal tip
-      const tipOptimization = await this.calculateOptimalTip(deposit, gasPrice);
+      const tipOptimization = await this.calculateOptimalTip(
+        deposit,
+        await this.getGasPriceWithBuffer(),
+      );
 
       // Check unclaimed rewards rules based on earning power change
       const isEarningPowerIncrease =
