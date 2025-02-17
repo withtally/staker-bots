@@ -144,8 +144,6 @@ export class BaseProfitabilityEngine implements IProfitabilityEngine {
     try {
       // Limit batch size
       const batchDeposits = deposits.slice(0, this.config.maxBatchSize);
-      const gasPrice = await this.getGasPriceWithBuffer();
-
       // Analyze each deposit
       const results = await Promise.all(
         batchDeposits.map(async (deposit) => ({
