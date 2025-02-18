@@ -1,6 +1,11 @@
 import { ethers } from 'ethers';
 import { BaseExecutor } from './strategies/BaseExecutor';
-import { ExecutorConfig, QueuedTransaction, QueueStats, TransactionReceipt } from './interfaces/types';
+import {
+  ExecutorConfig,
+  QueuedTransaction,
+  QueueStats,
+  TransactionReceipt,
+} from './interfaces/types';
 import { DEFAULT_EXECUTOR_CONFIG } from './constants';
 import { ProfitabilityCheck } from '@/profitability/interfaces/types';
 
@@ -22,11 +27,7 @@ export class ExecutorWrapper {
       },
     };
 
-    this.executor = new BaseExecutor(
-      stakerContract,
-      provider,
-      fullConfig,
-    );
+    this.executor = new BaseExecutor(stakerContract, provider, fullConfig);
   }
 
   /**
@@ -82,7 +83,9 @@ export class ExecutorWrapper {
   /**
    * Get transaction receipt
    */
-  async getTransactionReceipt(hash: string): Promise<TransactionReceipt | null> {
+  async getTransactionReceipt(
+    hash: string,
+  ): Promise<TransactionReceipt | null> {
     return this.executor.getTransactionReceipt(hash);
   }
 

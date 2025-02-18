@@ -42,7 +42,7 @@ export class BaseExecutor implements IExecutor {
   }
 
   protected async getWalletBalance(): Promise<bigint> {
-    return await this.provider.getBalance(this.wallet.address) || BigInt(0);
+    return (await this.provider.getBalance(this.wallet.address)) || BigInt(0);
   }
 
   async start(): Promise<void> {
@@ -260,17 +260,13 @@ export class BaseExecutor implements IExecutor {
         .slice(0, this.config.concurrentTransactions - pendingTxs.length);
 
       // Process each transaction
-      await Promise.all(
-        queuedTxs.map((tx) => this.executeTransaction(tx)),
-      );
+      await Promise.all(queuedTxs.map((tx) => this.executeTransaction(tx)));
     } catch (error) {
       this.logger.error('Error processing queue:', { error });
     }
   }
 
-  protected async executeTransaction(
-    tx: QueuedTransaction,
-  ): Promise<void> {
+  protected async executeTransaction(tx: QueuedTransaction): Promise<void> {
     try {
       // Update status to pending
       tx.status = TransactionStatus.PENDING;
@@ -284,10 +280,11 @@ export class BaseExecutor implements IExecutor {
       const gasPrice = baseGasPrice * boostMultiplier;
 
       // Prepare transaction
-      const bumpTx = await this.stakerContract.bumpEarningPower?.populateTransaction(
-        tx.depositId,
-        tx.profitability.estimates.optimalTip,
-      );
+      const bumpTx =
+        await this.stakerContract.bumpEarningPower?.populateTransaction(
+          tx.depositId,
+          tx.profitability.estimates.optimalTip,
+        );
 
       // Send transaction
       const response = await this.wallet.sendTransaction({
@@ -309,9 +306,10 @@ export class BaseExecutor implements IExecutor {
       }
 
       // Update final status
-      tx.status = receipt.status === 1
-        ? TransactionStatus.CONFIRMED
-        : TransactionStatus.FAILED;
+      tx.status =
+        receipt.status === 1
+          ? TransactionStatus.CONFIRMED
+          : TransactionStatus.FAILED;
       this.queue.set(tx.id, tx);
 
       this.logger.info('Transaction executed:', {

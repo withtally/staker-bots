@@ -1,4 +1,3 @@
-import { ethers } from 'ethers';
 import { ProfitabilityCheck } from '@/profitability/interfaces/types';
 
 export interface WalletConfig {

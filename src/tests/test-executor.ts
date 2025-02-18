@@ -82,7 +82,10 @@ async function main() {
     },
   };
 
-  const queuedTx = await executor.queueTransaction(BigInt(1), mockProfitability);
+  const queuedTx = await executor.queueTransaction(
+    BigInt(1),
+    mockProfitability,
+  );
   logger.info('Transaction queued:', {
     id: queuedTx.id,
     status: queuedTx.status,
