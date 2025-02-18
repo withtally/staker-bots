@@ -119,3 +119,15 @@ A comprehensive test suite is included in `test-executor.ts` that verifies:
 - Status monitoring
 - Error handling
 - Tip transfers
+
+### Test Setup
+
+1. Place your staker contract ABI in `src/tests/abis/staker.json`
+2. Set required environment variables:
+   ```
+   TEST_PRIVATE_KEY=your_test_wallet_private_key
+   STAKER_CONTRACT_ADDRESS=your_contract_address
+   RPC_URL=your_rpc_url
+   TIP_RECEIVER=your_tip_receiver_address
+   ```
+3. Run the test: `npx tsx src/tests/test-executor.ts`

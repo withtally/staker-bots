@@ -22,7 +22,9 @@ async function main() {
   // Initialize staker contract
   logger.info('Initializing staker contract...');
   const stakerAddress = process.env.STAKER_CONTRACT_ADDRESS;
-  const stakerAbi = JSON.parse(fs.readFileSync('./abis/staker.json', 'utf-8'));
+  const stakerAbi = JSON.parse(
+    fs.readFileSync('./src/tests/abis/staker.json', 'utf-8'),
+  );
   const stakerContract = new ethers.Contract(
     stakerAddress!,
     stakerAbi,
