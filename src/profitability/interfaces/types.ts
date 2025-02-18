@@ -1,5 +1,5 @@
 export type Deposit = {
-  deposit_id: string;
+  deposit_id: bigint;
   owner_address: string;
   delegatee_address: string;
   amount: bigint;
@@ -25,7 +25,7 @@ export type ProfitabilityCheck = {
 
 export type BatchAnalysis = {
   deposits: {
-    depositId: string;
+    depositId: bigint;
     profitability: ProfitabilityCheck;
   }[];
   totalGasEstimate: bigint;

@@ -19,7 +19,18 @@ export class BaseProfitabilityEngine implements IProfitabilityEngine {
 
   constructor(
     protected readonly calculator: BinaryEligibilityOracleEarningPowerCalculator,
-    protected readonly stakerContract: ethers.Contract,
+    protected readonly stakerContract: ethers.Contract & {
+      deposits(depositId: bigint): Promise<{
+        owner: string;
+        balance: bigint;
+        earningPower: bigint;
+        delegatee: string;
+        claimer: string;
+      }>;
+      unclaimedReward(depositId: bigint): Promise<bigint>;
+      maxBumpTip(): Promise<bigint>;
+      bumpEarningPower(depositId: bigint, tip: bigint): Promise<bigint>;
+    },
     protected readonly provider: ethers.Provider,
     protected readonly config: ProfitabilityConfig,
   ) {
@@ -61,16 +72,7 @@ export class BaseProfitabilityEngine implements IProfitabilityEngine {
   async checkProfitability(deposit: Deposit): Promise<ProfitabilityCheck> {
     try {
       // Validate deposit exists by checking owner
-      const deposits = this.stakerContract['deposits'] as (
-        depositId: string,
-      ) => Promise<{
-        owner: string;
-        balance: bigint;
-        earningPower: bigint;
-        delegatee: string;
-        claimer: string;
-      }>;
-
+      const deposits = this.stakerContract.deposits;
       const depositInfo = await deposits(deposit.deposit_id);
       if (!depositInfo.owner) {
         this.logger.error('Deposit does not exist:', {
@@ -191,6 +193,14 @@ export class BaseProfitabilityEngine implements IProfitabilityEngine {
     deposit: Deposit,
   ): Promise<BumpRequirements> {
     // Get current and potential new earning power
+    console.log('Checking bump requirements for deposit:', {
+      id: deposit.deposit_id.toString(),
+      amount: ethers.formatEther(deposit.amount),
+      earning_power: deposit.earning_power ? ethers.formatEther(deposit.earning_power) : 'undefined',
+      owner: deposit.owner_address,
+      delegatee: deposit.delegatee_address,
+    });
+
     const [newEarningPower, isEligible] =
       await this.calculator.getNewEarningPower(
         deposit.amount,
@@ -199,17 +209,20 @@ export class BaseProfitabilityEngine implements IProfitabilityEngine {
         deposit.earning_power || BigInt(0),
       );
 
+    console.log('Calculator results:', {
+      newEarningPower: ethers.formatEther(newEarningPower),
+      isEligible,
+    });
+
     try {
       // Get unclaimed rewards and max tip
-      const unclaimedReward = this.stakerContract['unclaimedReward'] as (
-        depositId: string,
-      ) => Promise<bigint>;
-      const maxBumpTip = this.stakerContract[
-        'maxBumpTip'
-      ] as () => Promise<bigint>;
+      const unclaimedRewards = await this.stakerContract.unclaimedReward(deposit.deposit_id);
+      const maxBumpTipValue = await this.stakerContract.maxBumpTip();
 
-      const unclaimedRewards = await unclaimedReward(deposit.deposit_id);
-      const maxBumpTipValue = await maxBumpTip();
+      console.log('Contract values:', {
+        unclaimedRewards: ethers.formatEther(unclaimedRewards),
+        maxBumpTip: ethers.formatEther(maxBumpTipValue),
+      });
 
       return {
         isEligible,
@@ -228,19 +241,28 @@ export class BaseProfitabilityEngine implements IProfitabilityEngine {
     gasPrice: bigint,
   ): Promise<TipOptimization> {
     try {
-      // Estimate gas cost for bump operation
-      const estimateGas = this.stakerContract.estimateGas as unknown as {
-        bumpEarningPower: (depositId: string, tip: number) => Promise<bigint>;
-      };
-      const maxBumpTip = this.stakerContract[
-        'maxBumpTip'
-      ] as () => Promise<bigint>;
+      // Get max tip value first to use as the value for gas estimation
+      const maxBumpTipValue = await this.stakerContract.maxBumpTip();
 
-      const gasEstimate = await estimateGas.bumpEarningPower(
-        deposit.deposit_id,
-        0,
-      );
-      const maxBumpTipValue = await maxBumpTip();
+      // Check if the deposit is eligible for a bump
+      const requirements = await this.validateBumpRequirements(deposit);
+      if (!requirements.isEligible) {
+        return {
+          optimalTip: BigInt(0),
+          expectedProfit: BigInt(0),
+          gasEstimate: BigInt(0),
+        };
+      }
+
+      // Estimate gas cost for bump operation using the provider
+      const gasEstimate = await this.provider.estimateGas({
+        to: this.stakerContract.target,
+        data: this.stakerContract.interface.encodeFunctionData('bumpEarningPower', [
+          BigInt(deposit.deposit_id),
+          BigInt(0),
+        ]),
+        value: maxBumpTipValue, // Include value for payable function
+      });
 
       // Calculate base cost
       const baseCost = gasEstimate * gasPrice;
