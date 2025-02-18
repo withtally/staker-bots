@@ -2,7 +2,7 @@
 
 The Profitability Engine component is responsible for analyzing and determining whether deposits can be profitably bumped, considering calculator eligibility, reward constraints, gas costs, and batch optimization.
 
-####  Overview
+#### Overview
 
 The profitability engine integrates with the [Staker Contract](https://github.com/withtally/staker/blob/main/src/Staker.sol) to determine initial bump eligibility and calculates optimal tips and batch sizes for profitable bump operations.
 

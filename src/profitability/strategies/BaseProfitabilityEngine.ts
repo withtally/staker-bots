@@ -193,10 +193,12 @@ export class BaseProfitabilityEngine implements IProfitabilityEngine {
     deposit: Deposit,
   ): Promise<BumpRequirements> {
     // Get current and potential new earning power
-    console.log('Checking bump requirements for deposit:', {
+    this.logger.info('Checking bump requirements for deposit:', {
       id: deposit.deposit_id.toString(),
       amount: ethers.formatEther(deposit.amount),
-      earning_power: deposit.earning_power ? ethers.formatEther(deposit.earning_power) : 'undefined',
+      earning_power: deposit.earning_power
+        ? ethers.formatEther(deposit.earning_power)
+        : 'undefined',
       owner: deposit.owner_address,
       delegatee: deposit.delegatee_address,
     });
@@ -209,17 +211,19 @@ export class BaseProfitabilityEngine implements IProfitabilityEngine {
         deposit.earning_power || BigInt(0),
       );
 
-    console.log('Calculator results:', {
+    this.logger.info('Calculator results:', {
       newEarningPower: ethers.formatEther(newEarningPower),
       isEligible,
     });
 
     try {
       // Get unclaimed rewards and max tip
-      const unclaimedRewards = await this.stakerContract.unclaimedReward(deposit.deposit_id);
+      const unclaimedRewards = await this.stakerContract.unclaimedReward(
+        deposit.deposit_id,
+      );
       const maxBumpTipValue = await this.stakerContract.maxBumpTip();
 
-      console.log('Contract values:', {
+      this.logger.info('Contract values:', {
         unclaimedRewards: ethers.formatEther(unclaimedRewards),
         maxBumpTip: ethers.formatEther(maxBumpTipValue),
       });
@@ -257,10 +261,10 @@ export class BaseProfitabilityEngine implements IProfitabilityEngine {
       // Estimate gas cost for bump operation using the provider
       const gasEstimate = await this.provider.estimateGas({
         to: this.stakerContract.target,
-        data: this.stakerContract.interface.encodeFunctionData('bumpEarningPower', [
-          BigInt(deposit.deposit_id),
-          BigInt(0),
-        ]),
+        data: this.stakerContract.interface.encodeFunctionData(
+          'bumpEarningPower',
+          [BigInt(deposit.deposit_id), BigInt(0)],
+        ),
         value: maxBumpTipValue, // Include value for payable function
       });
 
