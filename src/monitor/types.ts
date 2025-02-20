@@ -34,7 +34,7 @@ export interface StakeWithdrawnEvent {
   depositId: string;
   blockNumber: number;
   transactionHash: string;
-  withdrawnAmount: number;
+  withdrawnAmount: bigint;
 }
 
 export interface DelegateeAlteredEvent {

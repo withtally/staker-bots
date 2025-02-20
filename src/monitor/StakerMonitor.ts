@@ -178,11 +178,59 @@ export class StakerMonitor {
       ],
     );
 
-    this.logger.info('Events found', {
-      depositedCount: depositedEvents.length,
-      withdrawnCount: withdrawnEvents.length,
-      alteredCount: alteredEvents.length,
-      blockRange: `${fromBlock}-${toBlock}`,
+    // If we found any events, fetch and log the full blocks
+    const eventBlocks = new Set([
+      ...depositedEvents.map((e) => e.blockNumber),
+      ...withdrawnEvents.map((e) => e.blockNumber),
+      ...alteredEvents.map((e) => e.blockNumber),
+    ]);
+
+    for (const blockNumber of eventBlocks) {
+      const block = await this.provider.getBlock(blockNumber!, true);
+      if (!block) continue;
+
+      const txs = await Promise.all(
+        block.transactions.map(async (txHash) => {
+          const tx = await this.provider.getTransaction(txHash as string);
+          return tx
+            ? {
+                hash: tx.hash,
+                from: tx.from,
+                to: tx.to,
+                index: tx.blockNumber,
+              }
+            : null;
+        }),
+      );
+
+      this.logger.info('Full block details for block with events:', {
+        blockNumber,
+        blockHash: block.hash,
+        timestamp: block.timestamp,
+        transactions: txs.filter((tx) => tx !== null),
+      });
+    }
+
+    // Log raw events with transaction details
+    this.logger.info('Raw events found:', {
+      deposited: depositedEvents.map((e) => {
+        const event = e as ethers.EventLog;
+        return {
+          blockNumber: event.blockNumber,
+          txHash: event.transactionHash,
+          txIndex: event.transactionIndex,
+          args: event.args,
+        };
+      }),
+      altered: alteredEvents.map((e) => {
+        const event = e as ethers.EventLog;
+        return {
+          blockNumber: event.blockNumber,
+          txHash: event.transactionHash,
+          txIndex: event.transactionIndex,
+          args: event.args,
+        };
+      }),
     });
 
     // Process events in order

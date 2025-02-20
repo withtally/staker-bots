@@ -5,6 +5,7 @@ export interface IDatabase {
   createDeposit(deposit: Deposit): Promise<void>;
   getDeposit(depositId: string): Promise<Deposit | null>;
   getDepositsByDelegatee(delegateeAddress: string): Promise<Deposit[]>;
+  getAllDeposits(): Promise<Deposit[]>;
   updateDeposit(
     depositId: string,
     update: Partial<Omit<Deposit, 'deposit_id'>>,

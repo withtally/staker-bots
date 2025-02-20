@@ -22,7 +22,7 @@ export class EventProcessor {
         deposit_id: event.depositId,
         owner_address: event.ownerAddress,
         delegatee_address: event.delegateeAddress,
-        amount: Number(event.amount),
+        amount: event.amount.toString(),
       });
 
       this.logger.info('Created new deposit', {
@@ -62,13 +62,13 @@ export class EventProcessor {
         throw new Error(`Deposit ${event.depositId} not found`);
       }
 
-      const remainingAmount = deposit.amount - event.withdrawnAmount;
+      const remainingAmount = BigInt(deposit.amount) - event.withdrawnAmount;
 
       if (remainingAmount <= 0) {
         await this.db.deleteDeposit(event.depositId);
       } else {
         await this.db.updateDeposit(event.depositId, {
-          amount: remainingAmount,
+          amount: remainingAmount.toString(),
         });
       }
 

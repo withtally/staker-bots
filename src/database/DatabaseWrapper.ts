@@ -23,6 +23,7 @@ export class DatabaseWrapper implements IDatabase {
         deleteDeposit: supabaseDb.deleteDeposit,
         getDeposit: supabaseDb.getDeposit,
         getDepositsByDelegatee: supabaseDb.getDepositsByDelegatee,
+        getAllDeposits: supabaseDb.getAllDeposits,
         updateCheckpoint: supabaseCheckpoints.updateCheckpoint,
         getCheckpoint: supabaseCheckpoints.getCheckpoint,
         createScoreEvent: supabaseScoreEvents.createScoreEvent,
@@ -60,6 +61,14 @@ export class DatabaseWrapper implements IDatabase {
 
   async getDepositsByDelegatee(delegateeAddress: string): Promise<Deposit[]> {
     return this.db.getDepositsByDelegatee(delegateeAddress);
+  }
+
+  async getAllDeposits(): Promise<Deposit[]> {
+    if (this.db instanceof JsonDatabase) {
+      return Object.values(this.db.data.deposits);
+    } else {
+      return await supabaseDb.getAllDeposits();
+    }
   }
 
   // Checkpoints

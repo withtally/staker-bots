@@ -1,6 +1,7 @@
 import { ethers } from 'ethers';
 import { ConsoleLogger, Logger } from '@/monitor/logging';
 import { IProfitabilityEngine } from '../interfaces/IProfitabilityEngine';
+import { IPriceFeed } from '@/shared/price-feeds/interfaces';
 import {
   BatchAnalysis,
   BumpRequirements,
@@ -16,6 +17,7 @@ export class BaseProfitabilityEngine implements IProfitabilityEngine {
   protected isRunning: boolean;
   protected lastGasPrice: bigint;
   protected lastUpdateTimestamp: number;
+  protected rewardTokenAddress: string;
 
   constructor(
     protected readonly calculator: BinaryEligibilityOracleEarningPowerCalculator,
@@ -30,14 +32,17 @@ export class BaseProfitabilityEngine implements IProfitabilityEngine {
       unclaimedReward(depositId: bigint): Promise<bigint>;
       maxBumpTip(): Promise<bigint>;
       bumpEarningPower(depositId: bigint, tip: bigint): Promise<bigint>;
+      REWARD_TOKEN(): Promise<string>;
     },
     protected readonly provider: ethers.Provider,
     protected readonly config: ProfitabilityConfig,
+    protected readonly priceFeed: IPriceFeed,
   ) {
     this.logger = new ConsoleLogger('info');
     this.isRunning = false;
     this.lastGasPrice = BigInt(0);
     this.lastUpdateTimestamp = 0;
+    this.rewardTokenAddress = '';
 
     // Validate staker contract
     if (!this.stakerContract.interface.hasFunction('bumpEarningPower')) {
@@ -48,6 +53,7 @@ export class BaseProfitabilityEngine implements IProfitabilityEngine {
   }
 
   async start(): Promise<void> {
+    this.rewardTokenAddress = await this.stakerContract.REWARD_TOKEN();
     this.isRunning = true;
     this.logger.info('Profitability engine started');
   }
@@ -207,7 +213,7 @@ export class BaseProfitabilityEngine implements IProfitabilityEngine {
       await this.calculator.getNewEarningPower(
         deposit.amount,
         deposit.owner_address,
-        deposit.delegatee_address,
+        deposit.delegatee_address!,
         deposit.earning_power || BigInt(0),
       );
 
@@ -268,15 +274,21 @@ export class BaseProfitabilityEngine implements IProfitabilityEngine {
         value: maxBumpTipValue, // Include value for payable function
       });
 
-      // Calculate base cost
+      // Calculate base cost in wei
       const baseCost = gasEstimate * gasPrice;
+
+      // Get token price and convert base cost to token terms
+      const baseCostInToken = await this.priceFeed.getTokenPriceInWei(
+        this.rewardTokenAddress,
+        baseCost,
+      );
 
       // Calculate optimal tip based on gas cost and minimum profit margin
       // Ensure tip doesn't exceed maxBumpTip
       const maxTip = BigInt(maxBumpTipValue.toString());
-      const desiredTip = baseCost + this.config.minProfitMargin;
+      const desiredTip = baseCostInToken + this.config.minProfitMargin;
       const optimalTip = desiredTip > maxTip ? maxTip : desiredTip;
-      const expectedProfit = optimalTip - baseCost;
+      const expectedProfit = optimalTip - baseCostInToken;
 
       return {
         optimalTip,

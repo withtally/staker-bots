@@ -7,7 +7,7 @@ import { ConsoleLogger, Logger } from '@/monitor/logging';
 export class JsonDatabase implements IDatabase {
   private dbPath: string;
   private logger: Logger;
-  private data: {
+  public data: {
     deposits: Record<string, Deposit>;
     checkpoints: Record<string, ProcessingCheckpoint>;
     score_events: Record<string, Record<number, ScoreEvent>>;
@@ -92,6 +92,10 @@ export class JsonDatabase implements IDatabase {
     return Object.values(this.data.deposits).filter(
       (deposit) => deposit.delegatee_address === delegateeAddress,
     );
+  }
+
+  async getAllDeposits(): Promise<Deposit[]> {
+    return Object.values(this.data.deposits);
   }
 
   // Checkpoints
