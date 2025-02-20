@@ -51,6 +51,16 @@ export const CONFIG = {
       retries: 3,
     },
   },
+  profitability: {
+    minProfitMargin: ethers.parseEther('0.001'), // 0.001 tokens minimum profit
+    gasPriceBuffer: 20, // 20% buffer for gas price volatility
+    maxBatchSize: 10,
+    defaultTipReceiver: process.env.TIP_RECEIVER_ADDRESS || '',
+    priceFeed: {
+      tokenAddress: process.env.PRICE_FEED_TOKEN_ADDRESS || '',
+      cacheDuration: 10 * 60 * 1000, // 10 minutes
+    },
+  },
 } as const;
 
 // Helper to create provider

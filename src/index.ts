@@ -4,7 +4,10 @@ import { ConsoleLogger } from '@/monitor/logging';
 import { StakerMonitor } from './monitor/StakerMonitor';
 import { createMonitorConfig } from './monitor/constants';
 import { CalculatorWrapper } from './calculator/CalculatorWrapper';
+import { ExecutorWrapper } from './executor';
 import { ProfitabilityEngineWrapper } from './profitability';
+import { ethers } from 'ethers';
+import { STAKER_ABI } from './monitor/constants';
 
 const logger = new ConsoleLogger('info');
 
@@ -32,6 +35,7 @@ let runningComponents: {
   monitor?: StakerMonitor;
   calculator?: CalculatorWrapper;
   profitabilityEngine?: ProfitabilityEngineWrapper;
+  transactionExecutor?: ExecutorWrapper;
 } = {};
 
 async function runMonitor(database: DatabaseWrapper) {
@@ -224,6 +228,63 @@ async function runProfitabilityEngine(database: DatabaseWrapper) {
   return engine;
 }
 
+async function runExecutor(database: DatabaseWrapper) {
+  const provider = createProvider();
+
+  // Test provider connection
+  try {
+    await provider.getNetwork();
+  } catch (error) {
+    logger.error('Failed to connect to provider:', { error });
+    throw error;
+  }
+
+  // Initialize staker contract
+  const stakerContract = new ethers.Contract(
+    CONFIG.monitor.stakerAddress,
+    STAKER_ABI,
+    provider,
+  );
+
+  logger.info('Initializing executor with staker contract:', {
+    address: CONFIG.monitor.stakerAddress,
+  });
+
+  const executor = new ExecutorWrapper(stakerContract, provider, {
+    wallet: {
+      privateKey: CONFIG.priceFeed.coinmarketcap.apiKey || '',
+      minBalance: ethers.parseEther('0.1'), // 0.1 ETH
+      maxPendingTransactions: 5,
+    },
+    maxQueueSize: 100,
+    minConfirmations: CONFIG.monitor.confirmations,
+    maxRetries: CONFIG.monitor.maxRetries,
+    retryDelayMs: 5000,
+    transferOutThreshold: ethers.parseEther('0.5'), // 0.5 ETH
+    gasBoostPercentage: 10, // 10%
+    concurrentTransactions: 3,
+  });
+
+  await executor.start();
+
+  // Set up health check logging
+  setInterval(async () => {
+    try {
+      const status = await executor.getStatus();
+      logger.info('Executor Status:', {
+        isRunning: status.isRunning,
+        walletBalance: ethers.formatEther(status.walletBalance),
+        pendingTransactions: status.pendingTransactions,
+        queueSize: status.queueSize,
+      });
+    } catch (error) {
+      logger.error('Executor health check failed:', { error });
+    }
+  }, CONFIG.monitor.healthCheckInterval * 1000);
+
+  return executor;
+}
+
 async function main() {
   try {
     // Initialize database
@@ -251,6 +312,11 @@ async function main() {
       logger.info('Starting profitability engine...');
       runningComponents.profitabilityEngine =
         await runProfitabilityEngine(database);
+    }
+
+    if (components.includes('executor')) {
+      logger.info('Starting transaction executor...');
+      runningComponents.transactionExecutor = await runExecutor(database);
     }
 
     if (Object.keys(runningComponents).length === 0) {

@@ -22,7 +22,7 @@ export class CoinMarketCapFeed implements IPriceFeed {
   private readonly client: AxiosInstance;
   private readonly logger: Logger;
   private readonly cache: Map<string, TokenPrice>;
-  private readonly cacheDuration: number = 60 * 1000; // 1 minute cache
+  private readonly cacheDuration: number = 10 * 60 * 1000; // 10 minutes cache
 
   constructor(config: PriceFeedConfig, logger: Logger) {
     this.client = axios.create({

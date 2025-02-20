@@ -1,7 +1,7 @@
 export type Deposit = {
   deposit_id: bigint;
   owner_address: string;
-  delegatee_address: string;
+  delegatee_address: string | null;
   amount: bigint;
   earning_power?: bigint;
   created_at?: string;
@@ -52,10 +52,12 @@ export type GasPriceEstimate = {
   timestamp: number;
 };
 
-export type ProfitabilityConfig = {
-  minProfitMargin: bigint; // Minimum profit margin in base units
-  maxBatchSize: number; // Maximum number of deposits to process in a batch
-  gasPriceBuffer: number; // Buffer percentage for gas price volatility
-  minConfidence: number; // Minimum confidence level for gas price estimates
-  defaultTipReceiver: string; // Default address to receive tips for bumps
-};
+export interface ProfitabilityConfig {
+  minProfitMargin: bigint;
+  gasPriceBuffer: number;
+  maxBatchSize: number;
+  defaultTipReceiver: string;
+  priceFeed: {
+    cacheDuration: number; // Cache duration in milliseconds
+  };
+}

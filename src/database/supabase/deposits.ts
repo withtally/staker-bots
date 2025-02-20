@@ -47,3 +47,9 @@ export async function getDepositsByDelegatee(
   if (error) throw error;
   return data;
 }
+
+export async function getAllDeposits(): Promise<Deposit[]> {
+  const { data, error } = await supabase.from('deposits').select();
+  if (error) throw error;
+  return data || [];
+}

@@ -53,10 +53,10 @@ export class BaseExecutor implements IExecutor {
     this.isRunning = true;
     this.logger.info('Executor started');
 
-    // Start processing queue
+    // Start processing queue periodically as a backup
     this.processingInterval = setInterval(
-      () => this.processQueue(),
-      1000, // Process queue every second
+      () => this.processQueue(true),
+      5000, // Process queue every 5 seconds as a backup
     );
   }
 
@@ -117,6 +117,12 @@ export class BaseExecutor implements IExecutor {
       id: tx.id,
       depositId: tx.depositId.toString(),
     });
+
+    // Process queue immediately if running
+    if (this.isRunning) {
+      // Use setImmediate to avoid blocking the current call stack
+      setImmediate(() => this.processQueue(false));
+    }
 
     return tx;
   }
@@ -230,7 +236,7 @@ export class BaseExecutor implements IExecutor {
     this.logger.info('Queue cleared');
   }
 
-  protected async processQueue(): Promise<void> {
+  protected async processQueue(isPeriodicCheck: boolean = false): Promise<void> {
     if (!this.isRunning) {
       return;
     }
@@ -258,6 +264,13 @@ export class BaseExecutor implements IExecutor {
       const queuedTxs = Array.from(this.queue.values())
         .filter((tx) => tx.status === TransactionStatus.QUEUED)
         .slice(0, this.config.concurrentTransactions - pendingTxs.length);
+
+      if (queuedTxs.length === 0) {
+        if (!isPeriodicCheck) {
+          this.logger.debug('No queued transactions to process');
+        }
+        return;
+      }
 
       // Process each transaction
       await Promise.all(queuedTxs.map((tx) => this.executeTransaction(tx)));
