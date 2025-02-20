@@ -236,7 +236,9 @@ export class BaseExecutor implements IExecutor {
     this.logger.info('Queue cleared');
   }
 
-  protected async processQueue(isPeriodicCheck: boolean = false): Promise<void> {
+  protected async processQueue(
+    isPeriodicCheck: boolean = false,
+  ): Promise<void> {
     if (!this.isRunning) {
       return;
     }

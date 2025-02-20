@@ -228,7 +228,7 @@ async function runProfitabilityEngine(database: DatabaseWrapper) {
   return engine;
 }
 
-async function runExecutor(database: DatabaseWrapper) {
+async function runExecutor() {
   const provider = createProvider();
 
   // Test provider connection
@@ -316,7 +316,7 @@ async function main() {
 
     if (components.includes('executor')) {
       logger.info('Starting transaction executor...');
-      runningComponents.transactionExecutor = await runExecutor(database);
+      runningComponents.transactionExecutor = await runExecutor();
     }
 
     if (Object.keys(runningComponents).length === 0) {

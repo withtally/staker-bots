@@ -5,12 +5,14 @@ A service that monitors staking deposits and executes profitable earning power b
 ## Setup
 
 1. Install dependencies:
+
 ```bash
 npm install
 ```
 
 2. Configure environment variables:
-Copy `.env.example` to `.env` and fill in the required values:
+   Copy `.env.example` to `.env` and fill in the required values:
+
 - `RPC_URL`: Your Ethereum RPC URL (e.g. from Alchemy or Infura)
 - `STAKER_CONTRACT_ADDRESS`: The address of the Staker contract
 - `PRIVATE_KEY`: Your wallet's private key (without 0x prefix)
@@ -18,16 +20,19 @@ Copy `.env.example` to `.env` and fill in the required values:
 ## Running the Service
 
 1. Build the TypeScript code:
+
 ```bash
 npm run build
 ```
 
 2. Start the service:
+
 ```bash
 npm start
 ```
 
 The service will:
+
 - Monitor deposits in the database
 - Analyze profitability of earning power bumps
 - Execute profitable transactions automatically

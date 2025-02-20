@@ -180,9 +180,9 @@ export class StakerMonitor {
 
     // If we found any events, fetch and log the full blocks
     const eventBlocks = new Set([
-      ...depositedEvents.map(e => e.blockNumber),
-      ...withdrawnEvents.map(e => e.blockNumber),
-      ...alteredEvents.map(e => e.blockNumber),
+      ...depositedEvents.map((e) => e.blockNumber),
+      ...withdrawnEvents.map((e) => e.blockNumber),
+      ...alteredEvents.map((e) => e.blockNumber),
     ]);
 
     for (const blockNumber of eventBlocks) {
@@ -190,28 +190,30 @@ export class StakerMonitor {
       if (!block) continue;
 
       const txs = await Promise.all(
-        block.transactions.map(async txHash => {
+        block.transactions.map(async (txHash) => {
           const tx = await this.provider.getTransaction(txHash as string);
-          return tx ? {
-            hash: tx.hash,
-            from: tx.from,
-            to: tx.to,
-            index: tx.blockNumber,
-          } : null;
-        })
+          return tx
+            ? {
+                hash: tx.hash,
+                from: tx.from,
+                to: tx.to,
+                index: tx.blockNumber,
+              }
+            : null;
+        }),
       );
 
       this.logger.info('Full block details for block with events:', {
         blockNumber,
         blockHash: block.hash,
         timestamp: block.timestamp,
-        transactions: txs.filter(tx => tx !== null),
+        transactions: txs.filter((tx) => tx !== null),
       });
     }
 
     // Log raw events with transaction details
     this.logger.info('Raw events found:', {
-      deposited: depositedEvents.map(e => {
+      deposited: depositedEvents.map((e) => {
         const event = e as ethers.EventLog;
         return {
           blockNumber: event.blockNumber,
@@ -220,7 +222,7 @@ export class StakerMonitor {
           args: event.args,
         };
       }),
-      altered: alteredEvents.map(e => {
+      altered: alteredEvents.map((e) => {
         const event = e as ethers.EventLog;
         return {
           blockNumber: event.blockNumber,

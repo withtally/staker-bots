@@ -73,7 +73,7 @@ export class ProfitabilityExecutorService {
       }
 
       // Convert database deposits to profitability engine format
-      const profitabilityDeposits = deposits.map(deposit => ({
+      const profitabilityDeposits = deposits.map((deposit) => ({
         deposit_id: BigInt(deposit.deposit_id),
         owner_address: deposit.owner_address,
         delegatee_address: deposit.delegatee_address,
@@ -83,9 +83,10 @@ export class ProfitabilityExecutorService {
       }));
 
       // Analyze batch profitability
-      const batchAnalysis = await this.profitabilityEngine.analyzeBatchProfitability(
-        profitabilityDeposits,
-      );
+      const batchAnalysis =
+        await this.profitabilityEngine.analyzeBatchProfitability(
+          profitabilityDeposits,
+        );
 
       // Queue profitable transactions
       for (const result of batchAnalysis.deposits) {
@@ -103,7 +104,9 @@ export class ProfitabilityExecutorService {
             });
           } catch (error) {
             if ((error as Error).message === 'Queue is full') {
-              this.logger.warn('Transaction queue is full, waiting for next cycle');
+              this.logger.warn(
+                'Transaction queue is full, waiting for next cycle',
+              );
               break;
             }
             this.logger.error('Error queueing transaction:', {
