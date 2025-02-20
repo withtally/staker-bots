@@ -43,6 +43,14 @@ export const CONFIG = {
     confirmations: parseInt(process.env.CONFIRMATIONS || '20'),
     healthCheckInterval: parseInt(process.env.HEALTH_CHECK_INTERVAL || '60'),
   },
+  priceFeed: {
+    coinmarketcap: {
+      apiKey: process.env.COINMARKETCAP_API_KEY || '',
+      baseUrl: 'https://pro-api.coinmarketcap.com/v2',
+      timeout: 5000,
+      retries: 3,
+    },
+  },
 } as const;
 
 // Helper to create provider
