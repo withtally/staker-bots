@@ -7,7 +7,10 @@ export interface TokenPrice {
 
 export interface IPriceFeed {
   getTokenPrice(tokenAddress: string): Promise<TokenPrice>;
-  getTokenPriceInWei(tokenAddress: string, amount: BigNumberish): Promise<bigint>;
+  getTokenPriceInWei(
+    tokenAddress: string,
+    amount: BigNumberish,
+  ): Promise<bigint>;
 }
 
 export interface PriceFeedConfig {

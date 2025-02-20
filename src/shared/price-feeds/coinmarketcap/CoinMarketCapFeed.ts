@@ -24,10 +24,7 @@ export class CoinMarketCapFeed implements IPriceFeed {
   private readonly cache: Map<string, TokenPrice>;
   private readonly cacheDuration: number = 60 * 1000; // 1 minute cache
 
-  constructor(
-    config: PriceFeedConfig,
-    logger: Logger,
-  ) {
+  constructor(config: PriceFeedConfig, logger: Logger) {
     this.client = axios.create({
       baseURL: config.baseUrl || 'https://pro-api.coinmarketcap.com/v2',
       timeout: config.timeout || 5000,
@@ -41,7 +38,10 @@ export class CoinMarketCapFeed implements IPriceFeed {
 
   async getTokenPrice(tokenAddress: string): Promise<TokenPrice> {
     const cachedPrice = this.cache.get(tokenAddress);
-    if (cachedPrice && Date.now() - cachedPrice.lastUpdated.getTime() < this.cacheDuration) {
+    if (
+      cachedPrice &&
+      Date.now() - cachedPrice.lastUpdated.getTime() < this.cacheDuration
+    ) {
       return cachedPrice;
     }
 
@@ -80,7 +80,10 @@ export class CoinMarketCapFeed implements IPriceFeed {
     }
   }
 
-  async getTokenPriceInWei(tokenAddress: string, amount: BigNumberish): Promise<bigint> {
+  async getTokenPriceInWei(
+    tokenAddress: string,
+    amount: BigNumberish,
+  ): Promise<bigint> {
     const price = await this.getTokenPrice(tokenAddress);
     const amountInWei = ethers.parseEther(amount.toString());
     const priceInWei = ethers.parseEther(price.usd.toString());
