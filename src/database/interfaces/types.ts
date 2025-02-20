@@ -1,7 +1,7 @@
 export interface Deposit {
   deposit_id: string;
   owner_address: string;
-  amount: number;
+  amount: string;
   delegatee_address: string;
   created_at?: string;
   updated_at?: string;
