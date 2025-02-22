@@ -59,7 +59,7 @@ export class StakerBotOrchestrator extends EventEmitter {
     private readonly executor: ExecutorWrapper,
     private readonly database: DatabaseWrapper,
     private readonly logger: Logger,
-    private readonly config: StakerBotConfig
+    private readonly config: StakerBotConfig,
   ) {
     super();
   }
@@ -117,15 +117,19 @@ export class StakerBotOrchestrator extends EventEmitter {
     }
   }
 
-  private async handleDelegateEvent(event: DelegateeAlteredEvent): Promise<void> {
+  private async handleDelegateEvent(
+    event: DelegateeAlteredEvent,
+  ): Promise<void> {
     try {
       this.logger.info('Processing delegate event', {
         delegatee: event.newDelegatee,
-        blockNumber: event.blockNumber
+        blockNumber: event.blockNumber,
       });
 
       // Get affected deposits
-      const deposits = await this.database.getDepositsByDelegatee(event.newDelegatee);
+      const deposits = await this.database.getDepositsByDelegatee(
+        event.newDelegatee,
+      );
 
       // Process in batches if needed
       for (let i = 0; i < deposits.length; i += this.config.batchSize) {
@@ -133,14 +137,14 @@ export class StakerBotOrchestrator extends EventEmitter {
 
         // 1. Update scores via calculator
         const scoreUpdates = await Promise.all(
-          batch.map(deposit =>
+          batch.map((deposit) =>
             this.calculator.getNewEarningPower(
               BigInt(deposit.amount),
               deposit.owner_address,
               deposit.delegatee_address!,
-              BigInt(0) // Previous earning power - should be stored/retrieved
-            )
-          )
+              BigInt(0), // Previous earning power - should be stored/retrieved
+            ),
+          ),
         );
 
         // Store score updates
@@ -149,30 +153,33 @@ export class StakerBotOrchestrator extends EventEmitter {
             this.database.createScoreEvent({
               delegatee: batch[index]!.delegatee_address!,
               score: update[0].toString(),
-              block_number: event.blockNumber
-            })
-          )
+              block_number: event.blockNumber,
+            }),
+          ),
         );
 
         // 2. Check profitability
-        const convertedBatch = batch.map(deposit => ({
+        const convertedBatch = batch.map((deposit) => ({
           ...deposit,
           deposit_id: BigInt(deposit.deposit_id),
-          amount: BigInt(deposit.amount)
+          amount: BigInt(deposit.amount),
         }));
-        const batchAnalysis = await this.profitabilityEngine.analyzeBatchProfitability(convertedBatch);
+        const batchAnalysis =
+          await this.profitabilityEngine.analyzeBatchProfitability(
+            convertedBatch,
+          );
 
         // 3. Queue profitable transactions
         for (const result of batchAnalysis.deposits) {
           if (result.profitability.canBump) {
             await this.executor.queueTransaction(
               result.depositId,
-              result.profitability
+              result.profitability,
             );
 
             this.logger.info('Queued profitable bump transaction', {
               depositId: result.depositId.toString(),
-              profit: result.profitability.estimates.expectedProfit.toString()
+              profit: result.profitability.estimates.expectedProfit.toString(),
             });
           }
         }
@@ -180,19 +187,21 @@ export class StakerBotOrchestrator extends EventEmitter {
 
       this.emit('processedDelegateEvent', {
         event,
-        success: true
+        success: true,
       });
     } catch (error) {
       this.logger.error('Error handling delegate event', {
         error,
-        event
+        event,
       });
-      await this.handleError(error instanceof Error ? error : new Error(String(error)));
+      await this.handleError(
+        error instanceof Error ? error : new Error(String(error)),
+      );
 
       this.emit('processedDelegateEvent', {
         event,
         success: false,
-        error
+        error,
       });
     }
   }
@@ -211,7 +220,7 @@ export class StakerBotOrchestrator extends EventEmitter {
     if (this.errorCount >= this.config.maxErrorThreshold) {
       this.logger.error('Error threshold exceeded, stopping orchestrator', {
         errorCount: this.errorCount,
-        timeWindow: this.config.errorTimeWindow
+        timeWindow: this.config.errorTimeWindow,
       });
 
       await this.stop();
@@ -229,13 +238,16 @@ export class StakerBotOrchestrator extends EventEmitter {
         monitor: await this.monitor.getMonitorStatus(),
         calculator: await this.calculator.getStatus(),
         profitability: await this.profitabilityEngine.getStatus(),
-        executor: await this.executor.getStatus()
-      }
+        executor: await this.executor.getStatus(),
+      },
     };
   }
 
   // Useful for testing and manual intervention
-  async reprocessBlockRange(fromBlock: number, toBlock: number): Promise<ProcessingResult> {
+  async reprocessBlockRange(
+    fromBlock: number,
+    toBlock: number,
+  ): Promise<ProcessingResult> {
     this.logger.info('Reprocessing block range', { fromBlock, toBlock });
 
     try {
@@ -249,28 +261,26 @@ export class StakerBotOrchestrator extends EventEmitter {
       return {
         success: true,
         processedBlocks: toBlock - fromBlock + 1,
-        processedEvents: 0 // We don't have access to event count
+        processedEvents: 0, // We don't have access to event count
       };
     } catch (error) {
       this.logger.error('Error reprocessing block range', {
         error,
         fromBlock,
-        toBlock
+        toBlock,
       });
 
       return {
         success: false,
         error: error as Error,
         processedBlocks: 0,
-        processedEvents: 0
+        processedEvents: 0,
       };
     }
   }
 
   // Helper method to check if transaction was profitable
-  async verifyTransactionProfitability(
-    txHash: string
-  ): Promise<{
+  async verifyTransactionProfitability(txHash: string): Promise<{
     profitable: boolean;
     expectedProfit: bigint;
     actualProfit: bigint;
@@ -291,14 +301,16 @@ export class StakerBotOrchestrator extends EventEmitter {
     const effectiveGasPrice = BigInt(receipt.effectiveGasPrice ?? 0);
     const gasUsed = BigInt(receipt.gasUsed);
     const gasCost = effectiveGasPrice * gasUsed;
-    const actualProfit = (tx.profitability?.estimates?.expectedProfit ?? BigInt(0)) - gasCost;
-    const expectedProfit = tx.profitability?.estimates?.expectedProfit ?? BigInt(0);
+    const actualProfit =
+      (tx.profitability?.estimates?.expectedProfit ?? BigInt(0)) - gasCost;
+    const expectedProfit =
+      tx.profitability?.estimates?.expectedProfit ?? BigInt(0);
 
     return {
       profitable: actualProfit > gasUsed,
       expectedProfit,
       actualProfit,
-      gasUsed
+      gasUsed,
     };
   }
 }

@@ -101,12 +101,15 @@ export class EventProcessor {
       // Check if deposit exists first
       const deposit = await this.db.getDeposit(event.depositId);
       if (!deposit) {
-        this.logger.warn('Received DelegateeAltered event for non-existent deposit', {
-          depositId: event.depositId,
-          oldDelegatee: event.oldDelegatee,
-          newDelegatee: event.newDelegatee,
-          blockNumber: event.blockNumber,
-        });
+        this.logger.warn(
+          'Received DelegateeAltered event for non-existent deposit',
+          {
+            depositId: event.depositId,
+            oldDelegatee: event.oldDelegatee,
+            newDelegatee: event.newDelegatee,
+            blockNumber: event.blockNumber,
+          },
+        );
         return {
           success: false,
           error: new Error(`Deposit ${event.depositId} not found`),
