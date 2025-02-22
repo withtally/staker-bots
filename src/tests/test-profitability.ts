@@ -3,12 +3,15 @@ import { BinaryEligibilityOracleEarningPowerCalculator } from '../calculator';
 import { BaseProfitabilityEngine } from '../profitability/strategies/BaseProfitabilityEngine';
 import {
   ProfitabilityConfig,
-  Deposit,
+  Deposit as ProfitabilityDeposit,
 } from '../profitability/interfaces/types';
 import { IDatabase } from '../database';
 import { ConsoleLogger, Logger } from '../monitor/logging';
 import fs from 'fs';
 import 'dotenv/config';
+import { Deposit } from '../database/interfaces/types';
+import { CoinMarketCapFeed } from '../shared/price-feeds/coinmarketcap/CoinMarketCapFeed';
+import { CONFIG } from '../config';
 
 // Define database deposit type
 interface DatabaseDeposit {
@@ -52,9 +55,6 @@ class MockDatabase implements IDatabase {
   async updateDeposit() {
     return;
   }
-  async deleteDeposit() {
-    return;
-  }
   async updateScoreEvent() {
     return;
   }
@@ -69,6 +69,9 @@ class MockDatabase implements IDatabase {
   }
   async getCheckpoint() {
     return null;
+  }
+  async getAllDeposits(): Promise<Deposit[]> {
+    return [];
   }
 }
 
@@ -98,7 +101,7 @@ async function main() {
           : undefined,
         owner_address: deposit.owner_address,
         delegatee_address: deposit.delegatee_address,
-      } satisfies Deposit;
+      } satisfies ProfitabilityDeposit;
     },
   );
   logger.info(`Loaded ${deposits.length} deposits from database`);
@@ -183,15 +186,24 @@ async function main() {
     minProfitMargin: BigInt(1e16), // 0.01 ETH
     gasPriceBuffer: 20, // 20%
     maxBatchSize: 10,
-    minConfidence: 90,
     defaultTipReceiver: process.env.TIP_RECEIVER || ethers.ZeroAddress,
+    priceFeed: {
+      cacheDuration: 10 * 60 * 1000, // 10 minutes
+    },
   };
+
   logger.info('Profitability config:', {
     minProfitMargin: ethers.formatEther(config.minProfitMargin),
     gasPriceBuffer: config.gasPriceBuffer,
     maxBatchSize: config.maxBatchSize,
     tipReceiver: config.defaultTipReceiver,
   });
+
+  // Initialize price feed
+  const priceFeed = new CoinMarketCapFeed(
+    CONFIG.priceFeed.coinmarketcap,
+    logger,
+  );
 
   // Initialize profitability engine
   logger.info('Initializing profitability engine...');
@@ -208,9 +220,11 @@ async function main() {
       unclaimedReward(depositId: bigint): Promise<bigint>;
       maxBumpTip(): Promise<bigint>;
       bumpEarningPower(depositId: bigint, tip: bigint): Promise<bigint>;
+      REWARD_TOKEN(): Promise<string>;
     },
     provider,
     config,
+    priceFeed,
   );
 
   // Start the engine

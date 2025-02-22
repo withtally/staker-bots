@@ -20,7 +20,6 @@ export class DatabaseWrapper implements IDatabase {
       this.db = {
         createDeposit: supabaseDb.createDeposit,
         updateDeposit: supabaseDb.updateDeposit,
-        deleteDeposit: supabaseDb.deleteDeposit,
         getDeposit: supabaseDb.getDeposit,
         getDepositsByDelegatee: supabaseDb.getDepositsByDelegatee,
         getAllDeposits: supabaseDb.getAllDeposits,
@@ -49,10 +48,6 @@ export class DatabaseWrapper implements IDatabase {
     update: Partial<Omit<Deposit, 'deposit_id'>>,
   ): Promise<void> {
     return this.db.updateDeposit(depositId, update);
-  }
-
-  async deleteDeposit(depositId: string): Promise<void> {
-    return this.db.deleteDeposit(depositId);
   }
 
   async getDeposit(depositId: string): Promise<Deposit | null> {

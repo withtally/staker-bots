@@ -65,7 +65,11 @@ export class EventProcessor {
       const remainingAmount = BigInt(deposit.amount) - event.withdrawnAmount;
 
       if (remainingAmount <= 0) {
-        await this.db.deleteDeposit(event.depositId);
+        // Instead of deleting, reset values and set delegatee to owner
+        await this.db.updateDeposit(event.depositId, {
+          amount: '0',
+          delegatee_address: deposit.owner_address,
+        });
       } else {
         await this.db.updateDeposit(event.depositId, {
           amount: remainingAmount.toString(),

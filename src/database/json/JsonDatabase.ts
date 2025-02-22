@@ -67,21 +67,14 @@ export class JsonDatabase implements IDatabase {
     update: Partial<Omit<Deposit, 'deposit_id'>>,
   ): Promise<void> {
     const deposit = this.data.deposits[depositId];
-    if (!deposit) throw new Error(`Deposit ${depositId} not found`);
-
-    // Only update if there are actual changes
-    const hasChanges = Object.entries(update).some(
-      ([key, value]) => deposit[key as keyof typeof deposit] !== value,
-    );
-
-    if (hasChanges) {
-      this.data.deposits[depositId] = {
-        ...deposit,
-        ...update,
-        updated_at: new Date().toISOString(),
-      };
-      await this.saveToFile();
+    if (!deposit) {
+      throw new Error(`Deposit ${depositId} not found`);
     }
+    this.data.deposits[depositId] = {
+      ...deposit,
+      ...update,
+    };
+    await this.saveToFile();
   }
 
   async getDeposit(depositId: string): Promise<Deposit | null> {
