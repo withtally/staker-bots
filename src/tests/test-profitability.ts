@@ -4,6 +4,8 @@ import { BaseProfitabilityEngine } from '../profitability/strategies/BaseProfita
 import {
   ProfitabilityConfig,
   Deposit as ProfitabilityDeposit,
+  ProfitabilityCheck,
+  BatchAnalysis,
 } from '../profitability/interfaces/types';
 import { IDatabase } from '../database';
 import { ConsoleLogger, Logger } from '../monitor/logging';
@@ -89,7 +91,7 @@ async function main() {
     (deposit: DatabaseDeposit) => {
       logger.info(`Processing deposit ${deposit.deposit_id}:`, {
         amount: deposit.amount,
-        earning_power: deposit.earning_power,
+        earning_power: deposit.earning_power || '0',
         owner: deposit.owner_address,
         delegatee: deposit.delegatee_address,
       });
@@ -98,7 +100,7 @@ async function main() {
         amount: BigInt(deposit.amount),
         earning_power: deposit.earning_power
           ? BigInt(deposit.earning_power)
-          : undefined,
+          : BigInt(0),
         owner_address: deposit.owner_address,
         delegatee_address: deposit.delegatee_address,
       } satisfies ProfitabilityDeposit;
@@ -118,7 +120,9 @@ async function main() {
   // Initialize staker contract
   logger.info('Initializing staker contract...');
   const stakerAddress = process.env.STAKER_CONTRACT_ADDRESS;
-  const stakerAbi = JSON.parse(fs.readFileSync('./abis/staker.json', 'utf-8'));
+  const stakerAbi = JSON.parse(
+    fs.readFileSync('./src/tests/abis/staker.json', 'utf-8'),
+  );
   const stakerContract = new ethers.Contract(
     stakerAddress!,
     stakerAbi,
@@ -139,7 +143,11 @@ async function main() {
       }>;
       unclaimedReward(depositId: bigint): Promise<bigint>;
       maxBumpTip(): Promise<bigint>;
-      bumpEarningPower(depositId: bigint, tip: bigint): Promise<bigint>;
+      bumpEarningPower(
+        depositId: bigint,
+        tipReceiver: string,
+        tip: bigint,
+      ): Promise<bigint>;
     };
 
     const maxBumpTip = await typedContract.maxBumpTip();
@@ -205,23 +213,30 @@ async function main() {
     logger,
   );
 
+  // Define typed contract for better type safety
+  const typedContract = stakerContract as ethers.Contract & {
+    deposits(depositId: bigint): Promise<{
+      owner: string;
+      balance: bigint;
+      earningPower: bigint;
+      delegatee: string;
+      claimer: string;
+    }>;
+    unclaimedReward(depositId: bigint): Promise<bigint>;
+    maxBumpTip(): Promise<bigint>;
+    bumpEarningPower(
+      depositId: bigint,
+      tipReceiver: string,
+      tip: bigint,
+    ): Promise<bigint>;
+    REWARD_TOKEN(): Promise<string>;
+  };
+
   // Initialize profitability engine
   logger.info('Initializing profitability engine...');
   const profitabilityEngine = new BaseProfitabilityEngine(
     calculator,
-    stakerContract as ethers.Contract & {
-      deposits(depositId: bigint): Promise<{
-        owner: string;
-        balance: bigint;
-        earningPower: bigint;
-        delegatee: string;
-        claimer: string;
-      }>;
-      unclaimedReward(depositId: bigint): Promise<bigint>;
-      maxBumpTip(): Promise<bigint>;
-      bumpEarningPower(depositId: bigint, tip: bigint): Promise<bigint>;
-      REWARD_TOKEN(): Promise<string>;
-    },
+    typedContract,
     provider,
     config,
     priceFeed,
@@ -233,9 +248,60 @@ async function main() {
 
   logger.info(`\nAnalyzing ${deposits.length} deposits for profitability...`);
   try {
-    // Analyze batch profitability
-    const batchAnalysis =
-      await profitabilityEngine.analyzeBatchProfitability(deposits);
+    // Create an array to store the successfully analyzed deposits
+    const results: { depositId: bigint; profitability: ProfitabilityCheck }[] =
+      [];
+    let totalGasEstimate = BigInt(0);
+    let totalExpectedProfit = BigInt(0);
+
+    // Process each deposit individually to avoid failing the entire batch
+    for (const deposit of deposits) {
+      try {
+        const profitability =
+          await profitabilityEngine.checkProfitability(deposit);
+        results.push({ depositId: deposit.deposit_id, profitability });
+
+        // Add to totals if profitable
+        if (profitability.canBump) {
+          totalGasEstimate += profitability.estimates.gasEstimate;
+          totalExpectedProfit += profitability.estimates.expectedProfit;
+        }
+      } catch (error) {
+        logger.warn(`Error analyzing deposit ${deposit.deposit_id}:`, {
+          error: error instanceof Error ? error.message : String(error),
+        });
+
+        // Add a failed result to keep track of all deposits
+        results.push({
+          depositId: deposit.deposit_id,
+          profitability: {
+            canBump: false,
+            constraints: {
+              calculatorEligible: false,
+              hasEnoughRewards: false,
+              isProfitable: false,
+            },
+            estimates: {
+              optimalTip: BigInt(0),
+              gasEstimate: BigInt(0),
+              expectedProfit: BigInt(0),
+              tipReceiver: config.defaultTipReceiver,
+            },
+          },
+        });
+      }
+    }
+
+    // Create a batch analysis result manually
+    const batchAnalysis: BatchAnalysis = {
+      deposits: results,
+      totalGasEstimate,
+      totalExpectedProfit,
+      recommendedBatchSize: Math.min(
+        results.filter((r) => r.profitability.canBump).length,
+        config.maxBatchSize,
+      ),
+    };
 
     // Print results
     logger.info('\nBatch Analysis Results:');
