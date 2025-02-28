@@ -10,17 +10,20 @@ import {
 } from '../interfaces/types';
 import { ProfitabilityCheck } from '@/profitability/interfaces/types';
 import { v4 as uuidv4 } from 'uuid';
-// Avoid direct imports that might not be found
-// We'll use dynamic imports and any types instead
+// Import Defender SDK correctly
+import {
+  DefenderRelaySigner,
+  DefenderRelayProvider,
+} from '@openzeppelin/defender-relay-client/lib/ethers';
 
 export class RelayerExecutor implements IExecutor {
   protected readonly logger: Logger;
   protected readonly queue: Map<string, QueuedTransaction>;
-  protected readonly relayProvider: any;
-  protected readonly relaySigner: any;
+  protected readonly relayProvider: DefenderRelayProvider;
+  protected readonly relaySigner: DefenderRelaySigner;
   protected isRunning: boolean;
   protected processingInterval: NodeJS.Timeout | null;
-  protected relayerContract: any;
+  protected relayerContract: ethers.Contract;
 
   constructor(
     protected readonly stakerContract: ethers.Contract,
@@ -37,26 +40,33 @@ export class RelayerExecutor implements IExecutor {
     }
 
     try {
-      // Dynamically import Defender SDK
-      const defenderSDK = require('@openzeppelin/defender-sdk');
-
       // Create Defender Relay Provider and Signer
-      this.relayProvider = new defenderSDK.Relayer.RelayProvider({
+      this.relayProvider = new DefenderRelayProvider({
         apiKey: this.config.relayer.apiKey,
         apiSecret: this.config.relayer.apiSecret,
       });
 
-      this.relaySigner = new defenderSDK.Relayer.RelaySigner({
-        apiKey: this.config.relayer.apiKey,
-        apiSecret: this.config.relayer.apiSecret,
-      }, this.relayProvider, { speed: 'fast' });
+      this.relaySigner = new DefenderRelaySigner(
+        {
+          apiKey: this.config.relayer.apiKey,
+          apiSecret: this.config.relayer.apiSecret,
+        },
+        this.relayProvider,
+        { speed: 'fast' },
+      );
     } catch (error) {
       this.logger.error('Failed to initialize Defender SDK:', { error });
-      throw new Error('Failed to initialize Defender SDK. Make sure it is installed correctly.');
+      throw new Error(
+        'Failed to initialize Defender SDK. Make sure it is installed correctly.',
+      );
     }
 
     // Create a new contract instance with the relay signer
-    this.relayerContract = stakerContract.connect(this.relaySigner);
+    this.relayerContract = new ethers.Contract(
+      typeof stakerContract.address === 'string' ? stakerContract.address : '',
+      stakerContract.interface,
+      this.relaySigner as unknown as ethers.Signer,
+    );
 
     // Validate staker contract
     if (!this.relayerContract.interface.hasFunction('bumpEarningPower')) {
@@ -70,7 +80,8 @@ export class RelayerExecutor implements IExecutor {
     try {
       const address = await this.relaySigner.getAddress();
       const balance = await this.relayProvider.getBalance(address);
-      return balance || BigInt(0);
+      // Convert the result which might be BigNumber to bigint
+      return balance ? BigInt(balance.toString()) : BigInt(0);
     } catch (error) {
       this.logger.error('Error getting relayer balance:', { error });
       return BigInt(0);
@@ -288,7 +299,7 @@ export class RelayerExecutor implements IExecutor {
       this.queue.set(tx.id, tx);
 
       // Use custom gas settings if provided
-      const txOptions: any = {
+      const txOptions: ethers.Overrides = {
         value: tx.profitability.estimates.optimalTip,
       };
 
@@ -297,7 +308,8 @@ export class RelayerExecutor implements IExecutor {
       }
 
       if (this.config.relayer.gasPolicy?.maxPriorityFeePerGas) {
-        txOptions.maxPriorityFeePerGas = this.config.relayer.gasPolicy.maxPriorityFeePerGas;
+        txOptions.maxPriorityFeePerGas =
+          this.config.relayer.gasPolicy.maxPriorityFeePerGas;
       }
 
       // Send transaction via OpenZeppelin Relayer
@@ -309,7 +321,7 @@ export class RelayerExecutor implements IExecutor {
       const response = await bumpFunction(
         tx.depositId,
         tx.profitability.estimates.optimalTip,
-        txOptions
+        txOptions,
       );
 
       // Update transaction
@@ -319,7 +331,7 @@ export class RelayerExecutor implements IExecutor {
 
       this.logger.info('Transaction sent via Relayer:', {
         id: tx.id,
-        hash: tx.hash
+        hash: tx.hash,
       });
 
       // Wait for confirmation
