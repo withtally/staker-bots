@@ -209,7 +209,11 @@ async function main() {
 
   // Initialize price feed
   const priceFeed = new CoinMarketCapFeed(
-    CONFIG.priceFeed.coinmarketcap,
+    {
+      ...CONFIG.priceFeed.coinmarketcap,
+      arbTestTokenAddress: CONFIG.monitor.arbTestTokenAddress,
+      arbRealTokenAddress: CONFIG.monitor.arbRealTokenAddress,
+    },
     logger,
   );
 

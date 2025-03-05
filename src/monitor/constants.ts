@@ -17,5 +17,6 @@ export const createMonitorConfig = (
   provider,
   database,
   networkName: 'arbitrum',
+  arbTokenAddress: CONFIG.monitor.arbTestTokenAddress,
   ...CONFIG.monitor,
 });
