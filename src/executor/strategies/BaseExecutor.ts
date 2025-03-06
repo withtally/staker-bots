@@ -298,6 +298,7 @@ export class BaseExecutor implements IExecutor {
       const bumpTx =
         await this.stakerContract.bumpEarningPower?.populateTransaction(
           tx.depositId,
+          tx.profitability.estimates.tipReceiver,
           tx.profitability.estimates.optimalTip,
         );
 

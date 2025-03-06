@@ -44,6 +44,10 @@ export const CONFIG = {
     confirmations: parseInt(process.env.CONFIRMATIONS || '20'),
     healthCheckInterval: parseInt(process.env.HEALTH_CHECK_INTERVAL || '60'),
   },
+  executor: {
+    privateKey: process.env.PRIVATE_KEY || '',
+    tipReceiver: process.env.TIP_RECEIVER || '0x0000000000000000000000000000000000000000',
+  },
   priceFeed: {
     coinmarketcap: {
       apiKey: process.env.COINMARKETCAP_API_KEY || '',

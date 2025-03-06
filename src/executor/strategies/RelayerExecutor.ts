@@ -320,6 +320,7 @@ export class RelayerExecutor implements IExecutor {
 
       const response = await bumpFunction(
         tx.depositId,
+        tx.profitability.estimates.tipReceiver,
         tx.profitability.estimates.optimalTip,
         txOptions,
       );
