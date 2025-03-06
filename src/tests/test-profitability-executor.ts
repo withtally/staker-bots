@@ -206,20 +206,25 @@ async function main() {
 
   // Initialize executor
   logger.info('Initializing executor...');
-  const executor = new ExecutorWrapper(stakerContract, provider, ExecutorType.WALLET, {
-    wallet: {
-      privateKey: CONFIG.executor.privateKey,
-      minBalance: ethers.parseEther('0.0000001'), // Very small value for testing
-      maxPendingTransactions: 5,
+  const executor = new ExecutorWrapper(
+    stakerContract,
+    provider,
+    ExecutorType.WALLET,
+    {
+      wallet: {
+        privateKey: CONFIG.executor.privateKey,
+        minBalance: ethers.parseEther('0.0000001'), // Very small value for testing
+        maxPendingTransactions: 5,
+      },
+      maxQueueSize: 10,
+      minConfirmations: 1,
+      maxRetries: 2,
+      retryDelayMs: 2000,
+      transferOutThreshold: ethers.parseEther('0.5'),
+      gasBoostPercentage: 5,
+      concurrentTransactions: 2,
     },
-    maxQueueSize: 10,
-    minConfirmations: 1,
-    maxRetries: 2,
-    retryDelayMs: 2000,
-    transferOutThreshold: ethers.parseEther('0.5'),
-    gasBoostPercentage: 5,
-    concurrentTransactions: 2,
-  });
+  );
 
   // Start executor
   await executor.start();
@@ -227,7 +232,8 @@ async function main() {
 
   try {
     // Create an array to store the successfully analyzed deposits
-    const results: { depositId: bigint; profitability: ProfitabilityCheck }[] = [];
+    const results: { depositId: bigint; profitability: ProfitabilityCheck }[] =
+      [];
     let totalGasEstimate = BigInt(0);
     let totalExpectedProfit = BigInt(0);
     let profitableDeposits = 0;
@@ -236,12 +242,15 @@ async function main() {
     for (const deposit of deposits) {
       try {
         // Use actual profitability engine instead of mocks
-        const profitability = await profitabilityEngine.checkProfitability(deposit);
+        const profitability =
+          await profitabilityEngine.checkProfitability(deposit);
 
         // Let's log detailed information about each deposit to understand it better
         try {
           const depositInfo = await typedContract.deposits(deposit.deposit_id);
-          const unclaimedReward = await typedContract.unclaimedReward(deposit.deposit_id);
+          const unclaimedReward = await typedContract.unclaimedReward(
+            deposit.deposit_id,
+          );
           const maxBumpTip = await typedContract.maxBumpTip();
 
           logger.info(`Detailed deposit ${deposit.deposit_id} information:`, {
@@ -251,23 +260,24 @@ async function main() {
             currentEarningPower: ethers.formatEther(depositInfo.earningPower),
             delegatee: depositInfo.delegatee,
             unclaimedReward: ethers.formatEther(unclaimedReward),
-            maxBumpTip: ethers.formatEther(maxBumpTip)
+            maxBumpTip: ethers.formatEther(maxBumpTip),
           });
 
           // Try to get the exact same earning power calculation the contract would use
-          const [newEarningPower, isEligible] = await calculator.getNewEarningPower(
-            depositInfo.balance,
-            depositInfo.owner,
-            depositInfo.delegatee,
-            depositInfo.earningPower
-          );
+          const [newEarningPower, isEligible] =
+            await calculator.getNewEarningPower(
+              depositInfo.balance,
+              depositInfo.owner,
+              depositInfo.delegatee,
+              depositInfo.earningPower,
+            );
 
           logger.info(`Calculator results for deposit ${deposit.deposit_id}:`, {
             isEligible,
             currentEarningPower: ethers.formatEther(depositInfo.earningPower),
             newEarningPower: ethers.formatEther(newEarningPower),
             hasChanged: depositInfo.earningPower !== newEarningPower,
-            profitabilityCanBump: profitability.canBump
+            profitabilityCanBump: profitability.canBump,
           });
 
           // FORCE ONE DEPOSIT TO BE ELIGIBLE
@@ -285,21 +295,29 @@ async function main() {
               },
               estimates: {
                 // Use a very small tip that's covered by the unclaimed rewards
-                optimalTip: ethers.parseEther("0.1"),
+                optimalTip: ethers.parseEther('0.1'),
                 // Small gas estimate to make it profitable
-                gasEstimate: ethers.parseEther("0.01"),
+                gasEstimate: ethers.parseEther('0.01'),
                 // Make sure there's some profit
-                expectedProfit: ethers.parseEther("0.01"),
-                tipReceiver: profitability.estimates.tipReceiver || config.defaultTipReceiver,
+                expectedProfit: ethers.parseEther('0.01'),
+                tipReceiver:
+                  profitability.estimates.tipReceiver ||
+                  config.defaultTipReceiver,
               },
             };
 
-            results.push({ depositId: deposit.deposit_id, profitability: adjustedProfitability });
+            results.push({
+              depositId: deposit.deposit_id,
+              profitability: adjustedProfitability,
+            });
             totalGasEstimate += adjustedProfitability.estimates.gasEstimate;
-            totalExpectedProfit += adjustedProfitability.estimates.expectedProfit;
+            totalExpectedProfit +=
+              adjustedProfitability.estimates.expectedProfit;
             profitableDeposits++;
 
-            logger.info(`Deposit ${deposit.deposit_id} is FULLY ELIGIBLE for bumping (forced for testing)`);
+            logger.info(
+              `Deposit ${deposit.deposit_id} is FULLY ELIGIBLE for bumping (forced for testing)`,
+            );
             continue;
           }
 
@@ -307,37 +325,56 @@ async function main() {
           // 1. Calculator says it's eligible
           // 2. New earning power is different from current earning power
           // 3. If new > current, ensure unclaimed rewards >= requested tip
-          if (isEligible &&
-              depositInfo.earningPower !== newEarningPower &&
-              (newEarningPower <= depositInfo.earningPower || unclaimedReward >= profitability.estimates.optimalTip)) {
-
+          if (
+            isEligible &&
+            depositInfo.earningPower !== newEarningPower &&
+            (newEarningPower <= depositInfo.earningPower ||
+              unclaimedReward >= profitability.estimates.optimalTip)
+          ) {
             // Use actual profitability data, but ensure tip is small enough
             const adjustedProfitability = {
               ...profitability,
               estimates: {
                 ...profitability.estimates,
                 // Make sure tip is small enough to be covered by unclaimed rewards
-                optimalTip: profitability.estimates.optimalTip > unclaimedReward ?
-                  unclaimedReward : profitability.estimates.optimalTip
-              }
+                optimalTip:
+                  profitability.estimates.optimalTip > unclaimedReward
+                    ? unclaimedReward
+                    : profitability.estimates.optimalTip,
+              },
             };
 
-            results.push({ depositId: deposit.deposit_id, profitability: adjustedProfitability });
+            results.push({
+              depositId: deposit.deposit_id,
+              profitability: adjustedProfitability,
+            });
 
             if (adjustedProfitability.canBump) {
               totalGasEstimate += adjustedProfitability.estimates.gasEstimate;
-              totalExpectedProfit += adjustedProfitability.estimates.expectedProfit;
+              totalExpectedProfit +=
+                adjustedProfitability.estimates.expectedProfit;
               profitableDeposits++;
 
-              logger.info(`Deposit ${deposit.deposit_id} is FULLY ELIGIBLE for bumping`);
+              logger.info(
+                `Deposit ${deposit.deposit_id} is FULLY ELIGIBLE for bumping`,
+              );
             }
           } else {
             if (!isEligible) {
-              logger.info(`Deposit ${deposit.deposit_id} is not eligible according to calculator`);
+              logger.info(
+                `Deposit ${deposit.deposit_id} is not eligible according to calculator`,
+              );
             } else if (depositInfo.earningPower === newEarningPower) {
-              logger.info(`Deposit ${deposit.deposit_id} earning power wouldn't change (${ethers.formatEther(depositInfo.earningPower)})`);
-            } else if (newEarningPower > depositInfo.earningPower && unclaimedReward < profitability.estimates.optimalTip) {
-              logger.info(`Deposit ${deposit.deposit_id} has insufficient unclaimed rewards: ${ethers.formatEther(unclaimedReward)} < ${ethers.formatEther(profitability.estimates.optimalTip)}`);
+              logger.info(
+                `Deposit ${deposit.deposit_id} earning power wouldn't change (${ethers.formatEther(depositInfo.earningPower)})`,
+              );
+            } else if (
+              newEarningPower > depositInfo.earningPower &&
+              unclaimedReward < profitability.estimates.optimalTip
+            ) {
+              logger.info(
+                `Deposit ${deposit.deposit_id} has insufficient unclaimed rewards: ${ethers.formatEther(unclaimedReward)} < ${ethers.formatEther(profitability.estimates.optimalTip)}`,
+              );
             }
 
             // Add a failed result with our standard failure format
@@ -347,7 +384,8 @@ async function main() {
                 canBump: false,
                 constraints: {
                   calculatorEligible: isEligible,
-                  hasEnoughRewards: unclaimedReward >= profitability.estimates.optimalTip,
+                  hasEnoughRewards:
+                    unclaimedReward >= profitability.estimates.optimalTip,
                   isProfitable: profitability.constraints.isProfitable,
                 },
                 estimates: {
@@ -360,9 +398,12 @@ async function main() {
             });
           }
         } catch (error) {
-          logger.warn(`Error getting detailed information for deposit ${deposit.deposit_id}:`, {
-            error: error instanceof Error ? error.message : String(error),
-          });
+          logger.warn(
+            `Error getting detailed information for deposit ${deposit.deposit_id}:`,
+            {
+              error: error instanceof Error ? error.message : String(error),
+            },
+          );
 
           results.push({
             depositId: deposit.deposit_id,
@@ -422,10 +463,18 @@ async function main() {
     // Print results
     logger.info('\nBatch Analysis Results:');
     logger.info('------------------------');
-    logger.info(`Total Gas Estimate: ${ethers.formatEther(batchAnalysis.totalGasEstimate)} ETH`);
-    logger.info(`Total Expected Profit: ${ethers.formatEther(batchAnalysis.totalExpectedProfit)} ETH`);
-    logger.info(`Recommended Batch Size: ${batchAnalysis.recommendedBatchSize}`);
-    logger.info(`Profitable Deposits: ${profitableDeposits} of ${deposits.length}`);
+    logger.info(
+      `Total Gas Estimate: ${ethers.formatEther(batchAnalysis.totalGasEstimate)} ETH`,
+    );
+    logger.info(
+      `Total Expected Profit: ${ethers.formatEther(batchAnalysis.totalExpectedProfit)} ETH`,
+    );
+    logger.info(
+      `Recommended Batch Size: ${batchAnalysis.recommendedBatchSize}`,
+    );
+    logger.info(
+      `Profitable Deposits: ${profitableDeposits} of ${deposits.length}`,
+    );
 
     // PART 2: EXECUTOR TEST
     logger.info('\nPART 2: Testing executor with profitable deposits...');
@@ -453,10 +502,16 @@ async function main() {
           if (result.depositId === BigInt(15)) {
             logger.info('Queueing special forced eligible deposit #15:', {
               depositId: result.depositId.toString(),
-              optimalTip: ethers.formatEther(result.profitability.estimates.optimalTip),
-              gasEstimate: ethers.formatEther(result.profitability.estimates.gasEstimate),
-              expectedProfit: ethers.formatEther(result.profitability.estimates.expectedProfit),
-              tipReceiver: result.profitability.estimates.tipReceiver
+              optimalTip: ethers.formatEther(
+                result.profitability.estimates.optimalTip,
+              ),
+              gasEstimate: ethers.formatEther(
+                result.profitability.estimates.gasEstimate,
+              ),
+              expectedProfit: ethers.formatEther(
+                result.profitability.estimates.expectedProfit,
+              ),
+              tipReceiver: result.profitability.estimates.tipReceiver,
             });
           }
 
@@ -474,9 +529,12 @@ async function main() {
           queuedTransactions.push(queuedTx);
           queuedCount++;
         } catch (error) {
-          logger.error(`Error queueing transaction for deposit ${result.depositId}:`, {
-            error: error instanceof Error ? error.message : String(error),
-          });
+          logger.error(
+            `Error queueing transaction for deposit ${result.depositId}:`,
+            {
+              error: error instanceof Error ? error.message : String(error),
+            },
+          );
         }
       }
     }
@@ -513,7 +571,10 @@ async function main() {
         });
 
         // If any transaction is still in progress, we're not done yet
-        if (tx.status !== TransactionStatus.CONFIRMED && tx.status !== TransactionStatus.FAILED) {
+        if (
+          tx.status !== TransactionStatus.CONFIRMED &&
+          tx.status !== TransactionStatus.FAILED
+        ) {
           allComplete = false;
         }
       }
@@ -524,7 +585,7 @@ async function main() {
       }
 
       // Wait 5 seconds before checking again
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      await new Promise((resolve) => setTimeout(resolve, 5000));
     }
 
     // Final queue stats
@@ -540,7 +601,6 @@ async function main() {
     // Stop the executor
     await executor.stop();
     logger.info('Executor stopped');
-
   } catch (error) {
     logger.error('Error during test:', {
       error: error instanceof Error ? error.message : String(error),
@@ -559,6 +619,8 @@ async function main() {
 main()
   .then(() => process.exit(0))
   .catch((error) => {
-    logger.error('Error:', { error: error instanceof Error ? error.message : String(error) });
+    logger.error('Error:', {
+      error: error instanceof Error ? error.message : String(error),
+    });
     process.exit(1);
   });

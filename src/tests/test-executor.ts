@@ -32,20 +32,25 @@ async function main() {
   );
   logger.info('Staker contract initialized at:', { address: stakerAddress });
 
-  const executor = new ExecutorWrapper(stakerContract, provider, ExecutorType.WALLET, {
-    wallet: {
-      privateKey: CONFIG.executor.privateKey,
-      minBalance: ethers.parseEther('0.0000001'), // 0.1 ETH
-      maxPendingTransactions: 2,
+  const executor = new ExecutorWrapper(
+    stakerContract,
+    provider,
+    ExecutorType.WALLET,
+    {
+      wallet: {
+        privateKey: CONFIG.executor.privateKey,
+        minBalance: ethers.parseEther('0.0000001'), // 0.1 ETH
+        maxPendingTransactions: 2,
+      },
+      maxQueueSize: 5,
+      minConfirmations: 1,
+      maxRetries: 2,
+      retryDelayMs: 2000,
+      transferOutThreshold: ethers.parseEther('0.5'), // 0.5 ETH
+      gasBoostPercentage: 5,
+      concurrentTransactions: 2,
     },
-    maxQueueSize: 5,
-    minConfirmations: 1,
-    maxRetries: 2,
-    retryDelayMs: 2000,
-    transferOutThreshold: ethers.parseEther('0.5'), // 0.5 ETH
-    gasBoostPercentage: 5,
-    concurrentTransactions: 2,
-  });
+  );
 
   // Start executor
   await executor.start();
