@@ -10,7 +10,6 @@ import {
 import { IDatabase } from '../database';
 import { ConsoleLogger, Logger } from '../monitor/logging';
 import fs from 'fs';
-import 'dotenv/config';
 import { Deposit } from '../database/interfaces/types';
 import { CoinMarketCapFeed } from '../shared/price-feeds/coinmarketcap/CoinMarketCapFeed';
 import { CONFIG } from '../config';
@@ -112,7 +111,7 @@ async function main() {
 
   // Initialize provider
   logger.info('Initializing provider...');
-  const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
+  const provider = new ethers.JsonRpcProvider(CONFIG.monitor.rpcUrl);
   const network = await provider.getNetwork();
   logger.info('Connected to network:', {
     chainId: network.chainId,
@@ -164,7 +163,7 @@ async function main() {
     minProfitMargin: BigInt(1e13), // 0.00001 ETH - much lower for testing
     gasPriceBuffer: 20, // 20%
     maxBatchSize: 10,
-    defaultTipReceiver: process.env.TIP_RECEIVER || ethers.ZeroAddress,
+    defaultTipReceiver: CONFIG.executor.tipReceiver || ethers.ZeroAddress,
     priceFeed: {
       cacheDuration: 10 * 60 * 1000, // 10 minutes
     },
