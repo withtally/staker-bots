@@ -31,7 +31,11 @@ export class BaseProfitabilityEngine implements IProfitabilityEngine {
       }>;
       unclaimedReward(depositId: bigint): Promise<bigint>;
       maxBumpTip(): Promise<bigint>;
-      bumpEarningPower(depositId: bigint, tip: bigint): Promise<bigint>;
+      bumpEarningPower(
+        depositId: bigint,
+        tipReceiver: string,
+        tip: bigint,
+      ): Promise<bigint>;
       REWARD_TOKEN(): Promise<string>;
     },
     protected readonly provider: ethers.Provider,
@@ -204,7 +208,7 @@ export class BaseProfitabilityEngine implements IProfitabilityEngine {
       amount: ethers.formatEther(deposit.amount),
       earning_power: deposit.earning_power
         ? ethers.formatEther(deposit.earning_power)
-        : 'undefined',
+        : '0.0',
       owner: deposit.owner_address,
       delegatee: deposit.delegatee_address,
     });
@@ -251,11 +255,10 @@ export class BaseProfitabilityEngine implements IProfitabilityEngine {
     gasPrice: bigint,
   ): Promise<TipOptimization> {
     try {
-      // Get max tip value first to use as the value for gas estimation
+      // Get max tip value and requirements
       const maxBumpTipValue = await this.stakerContract.maxBumpTip();
-
-      // Check if the deposit is eligible for a bump
       const requirements = await this.validateBumpRequirements(deposit);
+
       if (!requirements.isEligible) {
         return {
           optimalTip: BigInt(0),
@@ -264,31 +267,125 @@ export class BaseProfitabilityEngine implements IProfitabilityEngine {
         };
       }
 
-      // Estimate gas cost for bump operation using the provider
-      const gasEstimate = await this.provider.estimateGas({
-        to: this.stakerContract.target,
-        data: this.stakerContract.interface.encodeFunctionData(
-          'bumpEarningPower',
-          [BigInt(deposit.deposit_id), BigInt(0)],
-        ),
-        value: maxBumpTipValue, // Include value for payable function
-      });
+      // Use a higher minimum tip for estimation (10% of max)
+      const minimumTip = maxBumpTipValue / BigInt(10);
+
+      // Use the configured tip receiver or default to zero address
+      const tipReceiver = this.config.defaultTipReceiver || ethers.ZeroAddress;
+
+      // Default/fallback gas estimate for when direct estimation fails
+      // This is a reasonable estimate for an ERC20 transfer + some logic
+      const FALLBACK_GAS_ESTIMATE = BigInt(150000);
+
+      // Try to estimate gas, but use fallback if it fails
+      let gasEstimate: bigint;
+      try {
+        gasEstimate = await this.provider.estimateGas({
+          to: this.stakerContract.target,
+          data: this.stakerContract.interface.encodeFunctionData(
+            'bumpEarningPower',
+            [BigInt(deposit.deposit_id), tipReceiver, minimumTip],
+          ),
+          // No need to include value since this is not payable in ETH
+        });
+        this.logger.info(
+          `Gas estimation succeeded for deposit ${deposit.deposit_id}:`,
+          {
+            gasEstimate: gasEstimate.toString(),
+            minimumTip: ethers.formatEther(minimumTip),
+            tipReceiver,
+          },
+        );
+      } catch (error) {
+        this.logger.warn(
+          `Gas estimation failed for deposit ${deposit.deposit_id}, using fallback estimate:`,
+          {
+            error,
+            fallbackEstimate: FALLBACK_GAS_ESTIMATE.toString(),
+          },
+        );
+        gasEstimate = FALLBACK_GAS_ESTIMATE;
+      }
 
       // Calculate base cost in wei
       const baseCost = gasEstimate * gasPrice;
 
       // Get token price and convert base cost to token terms
-      const baseCostInToken = await this.priceFeed.getTokenPriceInWei(
-        this.rewardTokenAddress,
-        baseCost,
-      );
+      let baseCostInToken: bigint;
+      try {
+        baseCostInToken = await this.priceFeed.getTokenPriceInWei(
+          this.rewardTokenAddress,
+          baseCost,
+        );
+      } catch (error) {
+        // TODO: In production, we should handle this error more gracefully
+        // This mock value is only for testing purposes
+        this.logger.warn(
+          'Failed to fetch token price from CoinMarketCap, using mock value for testing:',
+          {
+            error,
+            tokenAddress: this.rewardTokenAddress,
+          },
+        );
+
+        // Mock conversion rate: 1 ETH = 10000 tokens (0.0001 ETH per token)
+        baseCostInToken = baseCost * BigInt(10000); // 1/0.0001 = 10000
+      }
 
       // Calculate optimal tip based on gas cost and minimum profit margin
       // Ensure tip doesn't exceed maxBumpTip
       const maxTip = BigInt(maxBumpTipValue.toString());
       const desiredTip = baseCostInToken + this.config.minProfitMargin;
       const optimalTip = desiredTip > maxTip ? maxTip : desiredTip;
+
+      // Calculate expected profit
       const expectedProfit = optimalTip - baseCostInToken;
+
+      // Only proceed if we have enough unclaimed rewards and the operation would be profitable
+      if (requirements.unclaimedRewards < optimalTip) {
+        this.logger.info(
+          `Not enough unclaimed rewards for deposit ${deposit.deposit_id}:`,
+          {
+            unclaimedRewards: ethers.formatEther(requirements.unclaimedRewards),
+            optimalTip: ethers.formatEther(optimalTip),
+          },
+        );
+        return {
+          optimalTip: BigInt(0),
+          expectedProfit: BigInt(0),
+          gasEstimate: BigInt(0),
+        };
+      }
+
+      // Ensure we only recommend transactions that would be profitable
+      if (expectedProfit < this.config.minProfitMargin) {
+        this.logger.info(
+          `Transaction would not be profitable for deposit ${deposit.deposit_id}:`,
+          {
+            baseCostInToken: ethers.formatEther(baseCostInToken),
+            optimalTip: ethers.formatEther(optimalTip),
+            expectedProfit: ethers.formatEther(expectedProfit),
+            minProfitMargin: ethers.formatEther(this.config.minProfitMargin),
+          },
+        );
+
+        return {
+          optimalTip: BigInt(0),
+          expectedProfit: BigInt(0),
+          gasEstimate: BigInt(0),
+        };
+      }
+
+      this.logger.info(
+        `Profitable transaction found for deposit ${deposit.deposit_id}:`,
+        {
+          gasEstimate: gasEstimate.toString(),
+          baseCostInToken: ethers.formatEther(baseCostInToken),
+          optimalTip: ethers.formatEther(optimalTip),
+          expectedProfit: ethers.formatEther(expectedProfit),
+          tipReceiver,
+        },
+      );
 
       return {
         optimalTip,

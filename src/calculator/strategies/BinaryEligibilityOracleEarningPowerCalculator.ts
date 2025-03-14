@@ -5,7 +5,6 @@ import { ConsoleLogger, Logger } from '@/monitor/logging';
 import { ethers } from 'ethers';
 import { CONFIG } from '@/config';
 import { REWARD_CALCULATOR_ABI } from '../constants';
-// import { ScoreEvent as DbScoreEvent } from '@/database/interfaces/types';
 
 export class BinaryEligibilityOracleEarningPowerCalculator
   implements ICalculatorStrategy

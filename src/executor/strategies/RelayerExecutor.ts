@@ -2,7 +2,7 @@ import { ethers } from 'ethers';
 import { ConsoleLogger, Logger } from '@/monitor/logging';
 import { IExecutor } from '../interfaces/IExecutor';
 import {
-  ExecutorConfig,
+  RelayerExecutorConfig,
   QueuedTransaction,
   TransactionStatus,
   QueueStats,
@@ -10,21 +10,27 @@ import {
 } from '../interfaces/types';
 import { ProfitabilityCheck } from '@/profitability/interfaces/types';
 import { v4 as uuidv4 } from 'uuid';
+// Import Defender SDK correctly
+import {
+  DefenderRelaySigner,
+  DefenderRelayProvider,
+} from '@openzeppelin/defender-relay-client/lib/ethers';
 
-export class BaseExecutor implements IExecutor {
+export class RelayerExecutor implements IExecutor {
   protected readonly logger: Logger;
-  protected readonly wallet: ethers.Wallet;
   protected readonly queue: Map<string, QueuedTransaction>;
+  protected readonly relayProvider: DefenderRelayProvider;
+  protected readonly relaySigner: DefenderRelaySigner;
   protected isRunning: boolean;
   protected processingInterval: NodeJS.Timeout | null;
+  protected relayerContract: ethers.Contract;
 
   constructor(
     protected readonly stakerContract: ethers.Contract,
     protected readonly provider: ethers.Provider,
-    protected readonly config: ExecutorConfig,
+    protected readonly config: RelayerExecutorConfig,
   ) {
     this.logger = new ConsoleLogger('info');
-    this.wallet = new ethers.Wallet(config.wallet.privateKey, provider);
     this.queue = new Map();
     this.isRunning = false;
     this.processingInterval = null;
@@ -33,16 +39,53 @@ export class BaseExecutor implements IExecutor {
       throw new Error('Provider is required');
     }
 
+    try {
+      // Create Defender Relay Provider and Signer
+      this.relayProvider = new DefenderRelayProvider({
+        apiKey: this.config.relayer.apiKey,
+        apiSecret: this.config.relayer.apiSecret,
+      });
+
+      this.relaySigner = new DefenderRelaySigner(
+        {
+          apiKey: this.config.relayer.apiKey,
+          apiSecret: this.config.relayer.apiSecret,
+        },
+        this.relayProvider,
+        { speed: 'fast' },
+      );
+    } catch (error) {
+      this.logger.error('Failed to initialize Defender SDK:', { error });
+      throw new Error(
+        'Failed to initialize Defender SDK. Make sure it is installed correctly.',
+      );
+    }
+
+    // Create a new contract instance with the relay signer
+    this.relayerContract = new ethers.Contract(
+      typeof stakerContract.address === 'string' ? stakerContract.address : '',
+      stakerContract.interface,
+      this.relaySigner as unknown as ethers.Signer,
+    );
+
     // Validate staker contract
-    if (!this.stakerContract.interface.hasFunction('bumpEarningPower')) {
+    if (!this.relayerContract.interface.hasFunction('bumpEarningPower')) {
       throw new Error(
         'Invalid staker contract: missing bumpEarningPower function',
       );
     }
   }
 
-  protected async getWalletBalance(): Promise<bigint> {
-    return (await this.provider.getBalance(this.wallet.address)) || BigInt(0);
+  protected async getRelayerBalance(): Promise<bigint> {
+    try {
+      const address = await this.relaySigner.getAddress();
+      const balance = await this.relayProvider.getBalance(address);
+      // Convert the result which might be BigNumber to bigint
+      return balance ? BigInt(balance.toString()) : BigInt(0);
+    } catch (error) {
+      this.logger.error('Error getting relayer balance:', { error });
+      return BigInt(0);
+    }
   }
 
   async start(): Promise<void> {
@@ -51,7 +94,7 @@ export class BaseExecutor implements IExecutor {
     }
 
     this.isRunning = true;
-    this.logger.info('Executor started');
+    this.logger.info('RelayerExecutor started');
 
     // Start processing queue periodically as a backup
     this.processingInterval = setInterval(
@@ -71,7 +114,7 @@ export class BaseExecutor implements IExecutor {
       this.processingInterval = null;
     }
 
-    this.logger.info('Executor stopped');
+    this.logger.info('RelayerExecutor stopped');
   }
 
   async getStatus(): Promise<{
@@ -80,7 +123,7 @@ export class BaseExecutor implements IExecutor {
     pendingTransactions: number;
     queueSize: number;
   }> {
-    const balance = await this.getWalletBalance();
+    const balance = await this.getRelayerBalance();
     const pendingTxs = Array.from(this.queue.values()).filter(
       (tx) => tx.status === TransactionStatus.PENDING,
     ).length;
@@ -113,7 +156,7 @@ export class BaseExecutor implements IExecutor {
 
     // Add to queue
     this.queue.set(tx.id, tx);
-    this.logger.info('Transaction queued:', {
+    this.logger.info('Transaction queued for relay:', {
       id: tx.id,
       depositId: tx.depositId.toString(),
     });
@@ -192,43 +235,11 @@ export class BaseExecutor implements IExecutor {
   }
 
   async transferOutTips(): Promise<TransactionReceipt | null> {
-    const balance = await this.getWalletBalance();
-    if (balance < this.config.transferOutThreshold) {
-      return null;
-    }
-
-    try {
-      // Calculate transfer amount (leave some ETH for gas)
-      const feeData = await this.provider.getFeeData();
-      const gasPrice = feeData.gasPrice || BigInt(0);
-      const gasLimit = BigInt(21000); // Standard ETH transfer
-      const gasCost = gasLimit * gasPrice;
-      const transferAmount = balance - gasCost;
-
-      // Send transaction
-      const tx = await this.wallet.sendTransaction({
-        to: this.config.wallet.privateKey,
-        value: transferAmount,
-        gasLimit,
-      });
-
-      // Wait for confirmation
-      const receipt = await tx.wait(this.config.minConfirmations);
-      if (!receipt) {
-        throw new Error('Failed to get transaction receipt');
-      }
-
-      return {
-        hash: receipt.hash,
-        status: receipt.status === 1,
-        blockNumber: receipt.blockNumber,
-        gasUsed: receipt.gasUsed,
-        effectiveGasPrice: receipt.gasPrice || BigInt(0),
-      };
-    } catch (error) {
-      this.logger.error('Error transferring tips:', { error });
-      throw error;
-    }
+    // OpenZeppelin Relayers manage their own funds, so this implementation
+    // is just a stub. In a real implementation, you might want to transfer funds
+    // from a contract or use a different approach.
+    this.logger.info('Transfer out not needed for OpenZeppelin Relayer');
+    return null;
   }
 
   async clearQueue(): Promise<void> {
@@ -244,12 +255,12 @@ export class BaseExecutor implements IExecutor {
     }
 
     try {
-      // Check wallet balance
-      const balance = await this.getWalletBalance();
-      if (balance < this.config.wallet.minBalance) {
-        this.logger.warn('Wallet balance too low:', {
+      // Check relayer balance
+      const balance = await this.getRelayerBalance();
+      if (balance < this.config.relayer.minBalance) {
+        this.logger.warn('Relayer balance too low:', {
           balance: ethers.formatEther(balance),
-          minimum: ethers.formatEther(this.config.wallet.minBalance),
+          minimum: ethers.formatEther(this.config.relayer.minBalance),
         });
         return;
       }
@@ -258,7 +269,7 @@ export class BaseExecutor implements IExecutor {
       const pendingTxs = Array.from(this.queue.values()).filter(
         (tx) => tx.status === TransactionStatus.PENDING,
       );
-      if (pendingTxs.length >= this.config.wallet.maxPendingTransactions) {
+      if (pendingTxs.length >= this.config.relayer.maxPendingTransactions) {
         return;
       }
 
@@ -287,33 +298,42 @@ export class BaseExecutor implements IExecutor {
       tx.status = TransactionStatus.PENDING;
       this.queue.set(tx.id, tx);
 
-      // Get current gas price and apply boost
-      const feeData = await this.provider.getFeeData();
-      const baseGasPrice = feeData.gasPrice || BigInt(0);
-      const boostMultiplier =
-        BigInt(100 + this.config.gasBoostPercentage) / BigInt(100);
-      const gasPrice = baseGasPrice * boostMultiplier;
-
-      // Prepare transaction
-      const bumpTx =
-        await this.stakerContract.bumpEarningPower?.populateTransaction(
-          tx.depositId,
-          tx.profitability.estimates.tipReceiver,
-          tx.profitability.estimates.optimalTip,
-        );
-
-      // Send transaction
-      const response = await this.wallet.sendTransaction({
-        ...bumpTx,
-        gasPrice,
+      // Use custom gas settings if provided
+      const txOptions: ethers.Overrides = {
         value: tx.profitability.estimates.optimalTip,
-      });
+      };
+
+      if (this.config.relayer.gasPolicy?.maxFeePerGas) {
+        txOptions.maxFeePerGas = this.config.relayer.gasPolicy.maxFeePerGas;
+      }
+
+      if (this.config.relayer.gasPolicy?.maxPriorityFeePerGas) {
+        txOptions.maxPriorityFeePerGas =
+          this.config.relayer.gasPolicy.maxPriorityFeePerGas;
+      }
+
+      // Send transaction via OpenZeppelin Relayer
+      const bumpFunction = this.relayerContract.bumpEarningPower;
+      if (!bumpFunction) {
+        throw new Error('bumpEarningPower function not found on contract');
+      }
+
+      const response = await bumpFunction(
+        tx.depositId,
+        tx.profitability.estimates.tipReceiver,
+        tx.profitability.estimates.optimalTip,
+        txOptions,
+      );
 
       // Update transaction
       tx.hash = response.hash;
-      tx.gasPrice = gasPrice;
       tx.executedAt = new Date();
       this.queue.set(tx.id, tx);
+
+      this.logger.info('Transaction sent via Relayer:', {
+        id: tx.id,
+        hash: tx.hash,
+      });
 
       // Wait for confirmation
       const receipt = await response.wait(this.config.minConfirmations);
@@ -326,9 +346,12 @@ export class BaseExecutor implements IExecutor {
         receipt.status === 1
           ? TransactionStatus.CONFIRMED
           : TransactionStatus.FAILED;
+
+      tx.gasPrice = receipt.gasPrice;
+      tx.gasLimit = receipt.gasLimit;
       this.queue.set(tx.id, tx);
 
-      this.logger.info('Transaction executed:', {
+      this.logger.info('Transaction executed via Relayer:', {
         id: tx.id,
         hash: tx.hash,
         status: tx.status,
@@ -337,7 +360,7 @@ export class BaseExecutor implements IExecutor {
       tx.status = TransactionStatus.FAILED;
       tx.error = error as Error;
       this.queue.set(tx.id, tx);
-      this.logger.error('Error executing transaction:', {
+      this.logger.error('Error executing transaction via Relayer:', {
         error,
         id: tx.id,
       });

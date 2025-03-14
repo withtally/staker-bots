@@ -26,7 +26,8 @@ export const CONFIG = {
     rpcUrl: process.env.RPC_URL!,
     chainId: parseInt(process.env.CHAIN_ID || '42161'),
     stakerAddress: process.env.STAKER_CONTRACT_ADDRESS!,
-    arbTokenAddress: process.env.ARB_TOKEN_ADDRESS || '',
+    arbTestTokenAddress: process.env.ARB_TEST_TOKEN_ADDRESS || '',
+    arbRealTokenAddress: process.env.ARB_TOKEN_ADDRESS || '',
     rewardCalculatorAddress: process.env.REWARD_CALCULATOR_ADDRESS || '',
     rewardNotifierAddress: process.env.REWARD_NOTIFIER_ADDRESS || '',
     startBlock: parseInt(process.env.START_BLOCK || '0'),
@@ -42,6 +43,11 @@ export const CONFIG = {
     reorgDepth: parseInt(process.env.REORG_DEPTH || '64'),
     confirmations: parseInt(process.env.CONFIRMATIONS || '20'),
     healthCheckInterval: parseInt(process.env.HEALTH_CHECK_INTERVAL || '60'),
+  },
+  executor: {
+    privateKey: process.env.PRIVATE_KEY || '',
+    tipReceiver:
+      process.env.TIP_RECEIVER || '0x0000000000000000000000000000000000000000',
   },
   priceFeed: {
     coinmarketcap: {
