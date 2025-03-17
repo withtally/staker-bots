@@ -26,15 +26,26 @@ interface ExtendedDeposit extends Deposit {
   expected_profit?: string;
 }
 
-interface BatchAnalysisResult {
-  depositId: bigint;
-  profitability: ProfitabilityCheck;
+// Status interface for monitoring
+interface ComponentStatus {
+  isRunning: boolean;
+  lastProcessedBlock?: number;
+  currentChainBlock?: number;
+  processingLag?: number;
+  lastError?: Error;
+  lastSuccessfulRun?: Date;
 }
 
-interface BatchAnalysis {
-  results: BatchAnalysisResult[];
-  totalGasEstimate: bigint;
-  totalExpectedProfit: bigint;
+interface SystemStatus {
+  isRunning: boolean;
+  errorCount: number;
+  lastErrorTime: number;
+  components: {
+    monitor: ComponentStatus;
+    calculator: ComponentStatus;
+    profitability: ComponentStatus;
+    executor: ComponentStatus;
+  };
 }
 
 // Extend DatabaseWrapper interface
@@ -42,8 +53,14 @@ interface ExtendedDatabaseWrapper extends DatabaseWrapper {
   getUnprocessedDeposits(limit: number): Promise<ExtendedDeposit[]>;
   getEligibleDeposits(limit: number): Promise<ExtendedDeposit[]>;
   getProfitableDeposits(limit: number): Promise<ExtendedDeposit[]>;
-  updateDepositProfitability(depositId: string, profitability: ProfitabilityCheck): Promise<void>;
-  updateDeposit(depositId: string, update: Partial<ExtendedDeposit>): Promise<void>;
+  updateDepositProfitability(
+    depositId: string,
+    profitability: ProfitabilityCheck,
+  ): Promise<void>;
+  updateDeposit(
+    depositId: string,
+    update: Partial<ExtendedDeposit>,
+  ): Promise<void>;
 }
 
 // Configuration for the orchestrator
@@ -65,19 +82,6 @@ interface OrchestratorConfig {
   // Circuit breaker configs
   maxErrorThreshold: number;
   errorTimeWindow: number;
-}
-
-// Status interface for monitoring
-interface SystemStatus {
-  isRunning: boolean;
-  errorCount: number;
-  lastErrorTime: number;
-  components: {
-    monitor: any;
-    calculator: any;
-    profitability: any;
-    executor: any;
-  };
 }
 
 // StakerBotOrchestrator class - Central coordinator of all components
@@ -156,7 +160,9 @@ class StakerBotOrchestrator extends EventEmitter {
         await this.processComponents();
       } catch (error) {
         this.logger.error('Error in processing cycle:', { error });
-        await this.handleError(error instanceof Error ? error : new Error(String(error)));
+        await this.handleError(
+          error instanceof Error ? error : new Error(String(error)),
+        );
       }
     }, this.PROCESSING_INTERVAL);
   }
@@ -181,7 +187,9 @@ class StakerBotOrchestrator extends EventEmitter {
 
       // If we have enough eligible deposits, run profitability check
       if (eligibleDeposits.length >= this.MIN_DEPOSITS_FOR_PROFITABILITY) {
-        this.logger.info(`Running profitability check for ${eligibleDeposits.length} eligible deposits`);
+        this.logger.info(
+          `Running profitability check for ${eligibleDeposits.length} eligible deposits`,
+        );
         await this.processProfitability();
       }
       return;
@@ -211,7 +219,7 @@ class StakerBotOrchestrator extends EventEmitter {
       this.logger.info('Processing new blocks', {
         currentBlock,
         lastProcessed,
-        lag: currentBlock - lastProcessed
+        lag: currentBlock - lastProcessed,
       });
     }
   }
@@ -221,28 +229,33 @@ class StakerBotOrchestrator extends EventEmitter {
     if (!status.isRunning) return;
 
     // Get unprocessed deposits from database
-    const unprocessedDeposits = await this.database.getUnprocessedDeposits(this.BATCH_SIZE);
+    const unprocessedDeposits = await this.database.getUnprocessedDeposits(
+      this.BATCH_SIZE,
+    );
 
     if (unprocessedDeposits.length === 0) {
       this.logger.info('No unprocessed deposits to calculate');
       return;
     }
 
-    this.logger.info(`Processing ${unprocessedDeposits.length} deposits for calculation`);
+    this.logger.info(
+      `Processing ${unprocessedDeposits.length} deposits for calculation`,
+    );
     for (const deposit of unprocessedDeposits) {
       if (!deposit.delegatee_address) continue; // Skip deposits without delegatee
 
-      const [newEarningPower, isEligible] = await this.calculator.getNewEarningPower(
-        BigInt(deposit.amount),
-        deposit.owner_address,
-        deposit.delegatee_address,
-        BigInt(deposit.earning_power || '0')
-      );
+      const [newEarningPower, isEligible] =
+        await this.calculator.getNewEarningPower(
+          BigInt(deposit.amount),
+          deposit.owner_address,
+          deposit.delegatee_address,
+          BigInt(deposit.earning_power || '0'),
+        );
 
       // Store the calculation result
       await this.database.updateDeposit(deposit.deposit_id, {
         earning_power: newEarningPower.toString(),
-        is_eligible: isEligible
+        is_eligible: isEligible,
       });
     }
   }
@@ -252,39 +265,36 @@ class StakerBotOrchestrator extends EventEmitter {
     if (!status.isRunning) return;
 
     // Get eligible deposits that need profitability analysis
-    const eligibleDeposits = await this.database.getEligibleDeposits(this.BATCH_SIZE);
+    const eligibleDeposits = await this.database.getEligibleDeposits(
+      this.BATCH_SIZE,
+    );
 
     if (eligibleDeposits.length === 0) {
       this.logger.info('No eligible deposits for profitability analysis');
       return;
     }
 
-    this.logger.info(`Processing ${eligibleDeposits.length} deposits for profitability`);
-    const validDeposits = eligibleDeposits.filter(d => d.delegatee_address !== null);
+    this.logger.info(
+      `Processing ${eligibleDeposits.length} deposits for profitability`,
+    );
+    const validDeposits = eligibleDeposits.filter(
+      (d) => d.delegatee_address !== null,
+    );
 
     if (validDeposits.length === 0) return;
 
-    const analysis = await this.profitabilityEngine.analyzeBatchProfitability(
-      validDeposits.map(d => ({
-        deposit_id: BigInt(d.deposit_id),
-        amount: BigInt(d.amount),
-        owner_address: d.owner_address,
-        delegatee_address: d.delegatee_address as string
-      }))
-    );
-
-    // Store profitability results for each deposit
+    // Process each deposit individually for profitability
     for (const deposit of validDeposits) {
       const profitability = await this.profitabilityEngine.checkProfitability({
         deposit_id: BigInt(deposit.deposit_id),
         amount: BigInt(deposit.amount),
         owner_address: deposit.owner_address,
-        delegatee_address: deposit.delegatee_address as string
+        delegatee_address: deposit.delegatee_address as string,
       });
 
       await this.database.updateDepositProfitability(
         deposit.deposit_id,
-        profitability
+        profitability,
       );
     }
   }
@@ -294,26 +304,30 @@ class StakerBotOrchestrator extends EventEmitter {
     if (!status.isRunning) return;
 
     // Get profitable deposits ready for execution
-    const profitableDeposits = await this.database.getProfitableDeposits(this.BATCH_SIZE);
+    const profitableDeposits = await this.database.getProfitableDeposits(
+      this.BATCH_SIZE,
+    );
 
     if (profitableDeposits.length === 0) {
       this.logger.info('No profitable deposits ready for execution');
       return;
     }
 
-    this.logger.info(`Processing ${profitableDeposits.length} profitable deposits for execution`);
+    this.logger.info(
+      `Processing ${profitableDeposits.length} profitable deposits for execution`,
+    );
     for (const deposit of profitableDeposits) {
       const profitability = await this.profitabilityEngine.checkProfitability({
         deposit_id: BigInt(deposit.deposit_id),
         amount: BigInt(deposit.amount),
         owner_address: deposit.owner_address,
-        delegatee_address: deposit.delegatee_address
+        delegatee_address: deposit.delegatee_address,
       });
 
       if (profitability.canBump) {
         await this.executor.queueTransaction(
           BigInt(deposit.deposit_id),
-          profitability
+          profitability,
         );
       }
     }
@@ -372,27 +386,36 @@ class StakerBotOrchestrator extends EventEmitter {
       });
 
       // Get affected deposit
-      const deposit = await this.database.getDeposit(event.depositId.toString());
+      const deposit = await this.database.getDeposit(
+        event.depositId.toString(),
+      );
       if (!deposit) {
         this.logger.warn('Deposit not found for event', {
-          depositId: event.depositId.toString()
+          depositId: event.depositId.toString(),
         });
         return;
       }
 
       // 1. Update scores via calculator
-      const [newEarningPower, isEligible] = await this.calculator.getNewEarningPower(
-        BigInt(deposit.amount),
-        deposit.owner_address,
-        event.newDelegatee,
-        BigInt(0) // Default to zero since earning_power isn't in the Deposit interface
-      );
+      const [newEarningPower, isEligible] =
+        await this.calculator.getNewEarningPower(
+          BigInt(deposit.amount),
+          deposit.owner_address,
+          event.newDelegatee,
+          BigInt(0), // Default to zero since earning_power isn't in the Deposit interface
+        );
 
-      // Store score update
+      // Store score update and eligibility
       await this.database.createScoreEvent({
         delegatee: event.newDelegatee,
         score: newEarningPower.toString(),
         block_number: event.blockNumber,
+      });
+
+      // Update deposit with new earning power and eligibility
+      await this.database.updateDeposit(deposit.deposit_id, {
+        earning_power: newEarningPower.toString(),
+        is_eligible: isEligible,
       });
 
       // 2. Check profitability
@@ -404,24 +427,25 @@ class StakerBotOrchestrator extends EventEmitter {
         // Add any other required properties
       };
 
-      const profitabilityCheck = await this.profitabilityEngine.checkProfitability(convertedDeposit);
+      const profitabilityCheck =
+        await this.profitabilityEngine.checkProfitability(convertedDeposit);
 
       // 3. Queue transaction if profitable
       if (profitabilityCheck.canBump) {
         await this.executor.queueTransaction(
           BigInt(deposit.deposit_id),
-          profitabilityCheck
+          profitabilityCheck,
         );
 
         this.logger.info('Queued profitable bump transaction', {
           depositId: deposit.deposit_id,
           profit: profitabilityCheck.estimates.expectedProfit.toString(),
-          tipAmount: profitabilityCheck.estimates.optimalTip.toString()
+          tipAmount: profitabilityCheck.estimates.optimalTip.toString(),
         });
       } else {
         this.logger.info('Deposit not profitable for bumping', {
           depositId: deposit.deposit_id,
-          constraints: profitabilityCheck.constraints
+          constraints: profitabilityCheck.constraints,
         });
       }
 
@@ -487,7 +511,12 @@ class StakerBotOrchestrator extends EventEmitter {
   async reprocessBlockRange(
     fromBlock: number,
     toBlock: number,
-  ): Promise<{ success: boolean; processedBlocks: number; processedEvents: number; error?: Error }> {
+  ): Promise<{
+    success: boolean;
+    processedBlocks: number;
+    processedEvents: number;
+    error?: Error;
+  }> {
     this.logger.info('Reprocessing block range', { fromBlock, toBlock });
 
     try {
@@ -502,7 +531,8 @@ class StakerBotOrchestrator extends EventEmitter {
       await this.database.updateCheckpoint({
         component_type: 'staker-monitor',
         last_block_number: fromBlock - 1,
-        block_hash: '0x0000000000000000000000000000000000000000000000000000000000000000',
+        block_hash:
+          '0x0000000000000000000000000000000000000000000000000000000000000000',
         last_update: new Date().toISOString(),
       });
 
@@ -590,13 +620,18 @@ class StakerBotOrchestrator extends EventEmitter {
 }
 
 // Extended database implementation
-class ExtendedDatabaseWrapperImpl extends DatabaseWrapper implements ExtendedDatabaseWrapper {
+class ExtendedDatabaseWrapperImpl
+  extends DatabaseWrapper
+  implements ExtendedDatabaseWrapper
+{
   async getUnprocessedDeposits(limit: number): Promise<ExtendedDeposit[]> {
     const deposits = await this.getAllDeposits();
     return deposits
-      .filter(d => {
+      .filter((d) => {
         const extDeposit = d as ExtendedDeposit;
-        return !extDeposit.earning_power || extDeposit.is_eligible === undefined;
+        return (
+          !extDeposit.earning_power || extDeposit.is_eligible === undefined
+        );
       })
       .slice(0, limit) as ExtendedDeposit[];
   }
@@ -604,7 +639,7 @@ class ExtendedDatabaseWrapperImpl extends DatabaseWrapper implements ExtendedDat
   async getEligibleDeposits(limit: number): Promise<ExtendedDeposit[]> {
     const deposits = await this.getAllDeposits();
     return deposits
-      .filter(d => {
+      .filter((d) => {
         const extDeposit = d as ExtendedDeposit;
         return extDeposit.is_eligible && !extDeposit.profitability_checked;
       })
@@ -614,7 +649,7 @@ class ExtendedDatabaseWrapperImpl extends DatabaseWrapper implements ExtendedDat
   async getProfitableDeposits(limit: number): Promise<ExtendedDeposit[]> {
     const deposits = await this.getAllDeposits();
     return deposits
-      .filter(d => {
+      .filter((d) => {
         const extDeposit = d as ExtendedDeposit;
         return extDeposit.is_profitable && !extDeposit.execution_queued;
       })
@@ -623,7 +658,7 @@ class ExtendedDatabaseWrapperImpl extends DatabaseWrapper implements ExtendedDat
 
   async updateDepositProfitability(
     depositId: string,
-    profitability: ProfitabilityCheck
+    profitability: ProfitabilityCheck,
   ): Promise<void> {
     const deposit = await this.getDeposit(depositId);
     if (!deposit) return;
@@ -632,20 +667,20 @@ class ExtendedDatabaseWrapperImpl extends DatabaseWrapper implements ExtendedDat
       profitability_checked: true,
       is_profitable: profitability.canBump,
       optimal_tip: profitability.estimates?.optimalTip.toString(),
-      expected_profit: profitability.estimates?.expectedProfit.toString()
+      expected_profit: profitability.estimates?.expectedProfit.toString(),
     });
   }
 
   async updateDeposit(
     depositId: string,
-    update: Partial<ExtendedDeposit>
+    update: Partial<ExtendedDeposit>,
   ): Promise<void> {
     const deposit = await this.getDeposit(depositId);
     if (!deposit) return;
 
     await super.updateDeposit(depositId, {
       ...deposit,
-      ...update
+      ...update,
     });
   }
 }
@@ -693,7 +728,7 @@ async function main() {
     const stakerContract = new ethers.Contract(
       CONFIG.monitor.stakerAddress,
       STAKER_ABI,
-      provider
+      provider,
     );
 
     // Initialize monitor with extended functionality
@@ -727,7 +762,7 @@ async function main() {
         transferOutThreshold: ethers.parseEther('0.5'), // 0.5 ETH
         gasBoostPercentage: 10, // 10%
         concurrentTransactions: 3,
-      }
+      },
     );
 
     // Create orchestrator configuration
@@ -752,7 +787,7 @@ async function main() {
       executor,
       database,
       logger,
-      orchestratorConfig
+      orchestratorConfig,
     );
 
     // Only start if any components are enabled

@@ -11,27 +11,32 @@ This document describes how to set up and use the test environment for the stake
 ## Setup
 
 1. **Clone the repository with submodules**:
+
    ```bash
    git clone --recurse-submodules <repository-url>
    cd staker-bots
    ```
 
    If you already cloned without submodules, use:
+
    ```bash
    git submodule update --init --recursive
    ```
 
 2. **Install dependencies**:
+
    ```bash
    npm install
    ```
 
 3. **Set up the test environment**:
+
    ```bash
    npm run setup:test-env
    ```
 
    This command:
+
    - Starts a local Anvil node (if not already running)
    - Deploys test versions of the contracts
    - Creates a `.env.test` file with the necessary configuration
@@ -48,6 +53,7 @@ npm run test:harness
 ```
 
 This will:
+
 1. Start the bot with test configuration
 2. Run through predefined test scenarios (eligibility changes, random updates, oracle pauses)
 3. Check the results and stop the bot when done
@@ -79,6 +85,7 @@ npm run update-score <delegatee-address> <score>
 ```
 
 Example:
+
 ```bash
 npm run update-score 0x70997970C51812dc3A010C7d01b50e0d17dc79C8 85
 ```

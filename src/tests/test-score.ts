@@ -3,7 +3,7 @@ import { ethers } from 'ethers';
 import { CONFIG } from '../config';
 import { ConsoleLogger } from '../monitor/logging';
 import { config } from 'dotenv';
-import path from 'path';
+import type { Log as EthersLog } from 'ethers';
 
 // Load .env.test file
 config({ path: '.env.test' });
@@ -20,7 +20,7 @@ const CALCULATOR_ABI = [
   'function setOracleState(bool pauseOracle)',
   'function isOraclePaused() view returns (bool)',
   'event DelegateeScoreUpdated(address indexed delegatee, uint256 oldScore, uint256 newScore)',
-];
+] as const;
 
 interface SimulatorOptions {
   privateKey: string;
@@ -34,11 +34,37 @@ interface SimulatorOptions {
   pauseOracle?: boolean;
 }
 
+interface DelegateeScoreEvent {
+  name: string;
+  args: {
+    delegatee: string;
+    oldScore: bigint;
+    newScore: bigint;
+  };
+}
+
+type Calculator = ethers.Contract & {
+  delegateeEligibilityThresholdScore: () => Promise<bigint>;
+  updateEligibilityDelay: () => Promise<bigint>;
+  isOraclePaused: () => Promise<boolean>;
+  setOracleState: (
+    paused: boolean,
+  ) => Promise<ethers.ContractTransactionResponse>;
+  delegateeScores: (delegatee: string) => Promise<bigint>;
+  updateDelegateeScore: (
+    delegatee: string,
+    score: number,
+  ) => Promise<ethers.ContractTransactionResponse>;
+  overrideDelegateeScore: (
+    delegatee: string,
+    score: number,
+  ) => Promise<ethers.ContractTransactionResponse>;
+};
+
 class ScoreSimulator {
   private provider: ethers.Provider;
   private wallet: ethers.Wallet;
-  // @ts-ignore - We know this is initialized in the constructor
-  private calculator: ethers.Contract;
+  private calculator: Calculator | null = null;
   private options: SimulatorOptions;
   private thresholdScore: bigint = BigInt(0);
   private eligibilityDelay: bigint = BigInt(0);
@@ -47,29 +73,39 @@ class ScoreSimulator {
     this.options = options;
     this.provider = new ethers.JsonRpcProvider(options.rpcUrl);
     this.wallet = new ethers.Wallet(options.privateKey, this.provider);
+    this.initializeCalculator();
+  }
+
+  private initializeCalculator() {
     this.calculator = new ethers.Contract(
-      options.calculatorAddress,
+      this.options.calculatorAddress,
       CALCULATOR_ABI,
-      this.wallet
-    );
+      this.wallet,
+    ) as Calculator;
+  }
+
+  private getCalculator(): Calculator {
+    if (!this.calculator)
+      throw new Error('Calculator contract not initialized');
+    return this.calculator;
   }
 
   async initialize() {
     logger.info('Initializing score simulator...');
 
     try {
-      // @ts-ignore - We know calculator is initialized
-      this.thresholdScore = await this.calculator.delegateeEligibilityThresholdScore();
-      // @ts-ignore - We know calculator is initialized
-      this.eligibilityDelay = await this.calculator.updateEligibilityDelay();
+      const calculator = this.getCalculator();
+
+      this.thresholdScore =
+        await calculator.delegateeEligibilityThresholdScore();
+      this.eligibilityDelay = await calculator.updateEligibilityDelay();
+      const oraclePaused = await calculator.isOraclePaused();
 
       logger.info('Simulator initialized with contract parameters:', {
         thresholdScore: this.thresholdScore.toString(),
         eligibilityDelay: this.eligibilityDelay.toString(),
-        // @ts-ignore - We know calculator is initialized
-        oraclePaused: await this.calculator.isOraclePaused(),
+        oraclePaused,
       });
-
     } catch (error) {
       logger.error('Failed to initialize simulator:', { error });
       throw error;
@@ -79,8 +115,9 @@ class ScoreSimulator {
   async setOraclePaused(paused: boolean) {
     logger.info(`Setting oracle pause state to ${paused}`);
     try {
-      // @ts-ignore - We know calculator is initialized
-      const tx = await this.calculator.setOracleState(paused);
+      const calculator = this.getCalculator();
+
+      const tx = await calculator.setOracleState(paused);
       await tx.wait();
       logger.info(`Oracle pause state updated to ${paused}`);
     } catch (error) {
@@ -93,35 +130,48 @@ class ScoreSimulator {
     logger.info(`Updating score for ${delegatee} to ${score}`);
 
     try {
+      const calculator = this.getCalculator();
+
       // First check current score
-      // @ts-ignore - We know calculator is initialized
-      const currentScore = await this.calculator.delegateeScores(delegatee);
+      const currentScore = await calculator.delegateeScores(delegatee);
       logger.info(`Current score: ${currentScore.toString()}`);
 
       // Update score
-      // @ts-ignore - We know calculator is initialized
-      const tx = await this.calculator.updateDelegateeScore(delegatee, score);
+      const tx = await calculator.updateDelegateeScore(delegatee, score);
       const receipt = await tx.wait();
+      if (!receipt) throw new Error('Transaction receipt not found');
 
       // Find the event
-      const event = receipt?.logs
-        // @ts-ignore - We know calculator is initialized
-        .filter((log: any) => log.address === this.calculator.target)
-        .map((log: any) => {
+      const event = receipt.logs
+        .filter((log: EthersLog) => log.address === calculator.target)
+        .map((log: EthersLog) => {
           try {
-            // @ts-ignore - We know calculator is initialized
-            return this.calculator.interface.parseLog(log);
+            const parsedLog = calculator.interface.parseLog(log);
+            if (!parsedLog || parsedLog.name !== 'DelegateeScoreUpdated')
+              return null;
+
+            return {
+              name: parsedLog.name,
+              args: {
+                delegatee: parsedLog.args[0] as string,
+                oldScore: parsedLog.args[1] as bigint,
+                newScore: parsedLog.args[2] as bigint,
+              },
+            } as DelegateeScoreEvent;
           } catch (e) {
             return null;
           }
         })
-        .find((event: any) => event && event.name === 'DelegateeScoreUpdated');
+        .find(
+          (event: DelegateeScoreEvent | null): event is DelegateeScoreEvent =>
+            event?.name === 'DelegateeScoreUpdated',
+        );
 
       if (event) {
         logger.info('Score updated successfully:', {
-          delegatee: event.args[0],
-          oldScore: event.args[1].toString(),
-          newScore: event.args[2].toString(),
+          delegatee: event.args.delegatee,
+          oldScore: event.args.oldScore.toString(),
+          newScore: event.args.newScore.toString(),
           tx: tx.hash,
         });
       } else {
@@ -142,7 +192,7 @@ class ScoreSimulator {
     logger.info(`Overriding score for ${delegatee} to ${score}`);
 
     try {
-      // @ts-ignore - We know calculator is initialized
+      // @ts-expect-error - Contract is initialized
       const tx = await this.calculator.overrideDelegateeScore(delegatee, score);
       await tx.wait();
       logger.info(`Score overridden for ${delegatee} to ${score}`);
@@ -183,13 +233,17 @@ class ScoreSimulator {
 
     for (let i = 0; i < count; i++) {
       const delegatee = await this.getRandomDelegatee();
-      const score = Math.floor(Math.random() * (maxScore - minScore + 1)) + minScore;
+      const score =
+        Math.floor(Math.random() * (maxScore - minScore + 1)) + minScore;
 
       // 50% chance of being above threshold
       if (Math.random() > 0.5) {
         await this.updateScore(delegatee, Number(this.thresholdScore) + score);
       } else {
-        await this.updateScore(delegatee, Math.max(0, Number(this.thresholdScore) - score));
+        await this.updateScore(
+          delegatee,
+          Math.max(0, Number(this.thresholdScore) - score),
+        );
       }
 
       // Small delay between transactions
@@ -204,7 +258,9 @@ class ScoreSimulator {
       return;
     }
 
-    logger.info(`Running in controlled mode for ${delegatees.length} delegatees`);
+    logger.info(
+      `Running in controlled mode for ${delegatees.length} delegatees`,
+    );
 
     for (const delegatee of delegatees) {
       // Parse the delegatee:score format
@@ -214,7 +270,6 @@ class ScoreSimulator {
         continue;
       }
 
-      // @ts-ignore - We handle the null check above
       const score = parseInt(scoreStr || '0', 10);
 
       if (isNaN(score)) {
@@ -268,9 +323,12 @@ class ScoreSimulator {
 async function main() {
   // Load configuration from .env.test or use defaults
   const options: SimulatorOptions = {
-    privateKey: process.env.ORACLE_PRIVATE_KEY || '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80',
+    privateKey:
+      process.env.ORACLE_PRIVATE_KEY ||
+      '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80',
     rpcUrl: process.env.RPC_URL || CONFIG.monitor.rpcUrl,
-    calculatorAddress: process.env.CALCULATOR_ADDRESS || CONFIG.monitor.rewardCalculatorAddress,
+    calculatorAddress:
+      process.env.CALCULATOR_ADDRESS || CONFIG.monitor.rewardCalculatorAddress,
     mode: (process.argv[2] as 'random' | 'controlled') || 'random',
     count: parseInt(process.env.UPDATE_COUNT || '5', 10),
     minScore: parseInt(process.env.MIN_SCORE || '0', 10),

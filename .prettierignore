@@ -1,0 +1,7 @@
+*.sol
+contracts/**/*.sol
+contracts/arbstaker/lib/staker/lib/openzeppelin-contracts/**/*
+node_modules
+dist
+build
+.next
