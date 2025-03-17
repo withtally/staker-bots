@@ -11,6 +11,7 @@ import {
   TipOptimization,
 } from '../interfaces/types';
 import { BinaryEligibilityOracleEarningPowerCalculator } from '@/calculator';
+import { CONFIG } from '@/config';
 
 export class BaseProfitabilityEngine implements IProfitabilityEngine {
   protected readonly logger: Logger;
@@ -57,7 +58,7 @@ export class BaseProfitabilityEngine implements IProfitabilityEngine {
   }
 
   async start(): Promise<void> {
-    this.rewardTokenAddress = await this.stakerContract.REWARD_TOKEN();
+    this.rewardTokenAddress = await CONFIG.monitor.arbTestTokenAddress;
     this.isRunning = true;
     this.logger.info('Profitability engine started');
   }

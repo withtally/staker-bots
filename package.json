@@ -14,7 +14,15 @@
     "dev:all": "COMPONENTS=monitor,calculator,profitability, tsx watch src/index.ts",
     "lint": "eslint . --ext .ts",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "setup:test-env": "bash scripts/deploy-test-env.sh",
+    "update-score": "bash scripts/update-scores.sh",
+    "test:harness": "bash scripts/test-harness.sh run",
+    "test:check": "bash scripts/test-harness.sh check",
+    "test:scenario": "bash scripts/test-harness.sh scenario",
+    "test:full": "bash scripts/setup-and-test.sh",
+    "test:arbitrum-sepolia": "NETWORK=arbitrum-sepolia bash scripts/setup-and-test.sh",
+    "test": "pnpm --env-file=.env.test start"
   },
   "keywords": [],
   "author": "",

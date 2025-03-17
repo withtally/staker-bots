@@ -24,6 +24,7 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+/contracts/arbstaker/broadcast
 
 # IDE specific files
 .vscode/

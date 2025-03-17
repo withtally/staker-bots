@@ -1,0 +1,3 @@
+[submodule "contracts/arbstaker"]
+	path = contracts/arbstaker
+	url = https://github.com/withtally/arbstaker.git
