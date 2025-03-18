@@ -57,7 +57,7 @@ export class BaseProfitabilityEngine implements IProfitabilityEngine {
   }
 
   async start(): Promise<void> {
-    this.rewardTokenAddress = await this.stakerContract.REWARD_TOKEN();
+    this.rewardTokenAddress = this.config.rewardTokenAddress;
     this.isRunning = true;
     this.logger.info('Profitability engine started');
   }

@@ -10,6 +10,9 @@ import {
   ProfitabilityConfig,
 } from './interfaces/types';
 import { STAKER_ABI } from './constants';
+import { CONFIG } from '@/config';
+import { CoinMarketCapFeed } from '@/shared/price-feeds/coinmarketcap/CoinMarketCapFeed';
+import { Logger } from '@/monitor/logging';
 
 export class ProfitabilityEngineWrapper implements IProfitabilityEngine {
   private engine: IProfitabilityEngine;
@@ -18,11 +21,15 @@ export class ProfitabilityEngineWrapper implements IProfitabilityEngine {
     db: IDatabase,
     provider: ethers.Provider,
     stakerAddress: string,
+    logger: Logger,
     config: ProfitabilityConfig = {
       minProfitMargin: BigInt(1e16), // 0.01 ETH
       maxBatchSize: 10,
       gasPriceBuffer: 20, // 20% buffer
-      minConfidence: 90,
+      rewardTokenAddress: CONFIG.profitability.rewardTokenAddress,
+      priceFeed: {
+        cacheDuration: 10 * 60 * 1000, // 10 minutes
+      },
       defaultTipReceiver: stakerAddress, // Default to staker contract address
     },
   ) {
@@ -40,11 +47,41 @@ export class ProfitabilityEngineWrapper implements IProfitabilityEngine {
     );
 
     // Initialize base engine
+    // Cast contract to expected type
+    const typedContract = stakerContract as ethers.Contract & {
+      deposits(depositId: bigint): Promise<{
+        owner: string;
+        balance: bigint;
+        earningPower: bigint;
+        delegatee: string;
+        claimer: string;
+      }>;
+      unclaimedReward(depositId: bigint): Promise<bigint>;
+      maxBumpTip(): Promise<bigint>;
+      bumpEarningPower(
+        depositId: bigint,
+        tipReceiver: string,
+        tip: bigint,
+      ): Promise<bigint>;
+      REWARD_TOKEN(): Promise<string>;
+    };
+
+    // Initialize price feed
+    const priceFeed = new CoinMarketCapFeed(
+      {
+        ...CONFIG.priceFeed.coinmarketcap,
+        arbTestTokenAddress: CONFIG.monitor.arbTestTokenAddress,
+        arbRealTokenAddress: CONFIG.monitor.arbRealTokenAddress,
+      },
+      logger,
+    );
+
     this.engine = new BaseProfitabilityEngine(
       calculator,
-      stakerContract,
+      typedContract,
       provider,
       config,
+      priceFeed,
     );
   }
 

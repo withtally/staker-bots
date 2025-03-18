@@ -4,12 +4,55 @@ import { ConsoleLogger } from '@/monitor/logging';
 import { StakerMonitor } from './monitor/StakerMonitor';
 import { createMonitorConfig } from './monitor/constants';
 import { CalculatorWrapper } from './calculator/CalculatorWrapper';
-import { ExecutorWrapper } from './executor';
+import { ExecutorWrapper, ExecutorType } from './executor';
 import { ProfitabilityEngineWrapper } from './profitability';
 import { ethers } from 'ethers';
 import { STAKER_ABI } from './monitor/constants';
+import fs from 'fs/promises';
+import path from 'path';
+import { ProfitabilityCheck } from '@/profitability/interfaces/types';
+import type { Deposit as DBDeposit } from '@/database/interfaces/types';
+import type { Deposit as ProfitabilityDeposit } from '@/profitability/interfaces/types';
 
 const logger = new ConsoleLogger('info');
+const ERROR_LOG_PATH = path.join(process.cwd(), 'error.logs');
+
+// Convert database deposit to profitability deposit
+function convertDeposit(deposit: DBDeposit): ProfitabilityDeposit {
+  return {
+    deposit_id: BigInt(deposit.deposit_id),
+    owner_address: deposit.owner_address,
+    delegatee_address: deposit.delegatee_address,
+    amount: BigInt(deposit.amount),
+    created_at: deposit.created_at,
+    updated_at: deposit.updated_at
+  };
+}
+
+async function logError(error: any, context: string) {
+  const timestamp = new Date().toISOString();
+  const errorMessage = `[${timestamp}] ${context}: ${error.message}\n${error.stack}\n\n`;
+  await fs.appendFile(ERROR_LOG_PATH, errorMessage);
+  logger.error(context, { error });
+}
+
+async function waitForDeposits(database: DatabaseWrapper): Promise<boolean> {
+  try {
+    const deposits = await database.getAllDeposits();
+    return deposits.length > 0;
+  } catch (error) {
+    await logError(error, 'Error checking deposits');
+    return false;
+  }
+}
+
+let depositCheckCount = 0;
+const DEPOSIT_CHECK_RATIO = 5;
+
+async function shouldRunCalculator(): Promise<boolean> {
+  depositCheckCount = (depositCheckCount + 1) % DEPOSIT_CHECK_RATIO;
+  return depositCheckCount === 0;
+}
 
 async function shutdown(signal: string) {
   logger.info(`Received ${signal}. Starting graceful shutdown...`);
@@ -23,10 +66,13 @@ async function shutdown(signal: string) {
     if (runningComponents.profitabilityEngine) {
       await runningComponents.profitabilityEngine.stop();
     }
+    if (runningComponents.transactionExecutor) {
+      await runningComponents.transactionExecutor.stop();
+    }
     logger.info('Shutdown completed successfully');
     process.exit(0);
   } catch (error) {
-    logger.error('Error during shutdown:', { error });
+    await logError(error, 'Error during shutdown');
     process.exit(1);
   }
 }
@@ -96,6 +142,7 @@ async function runCalculator(database: DatabaseWrapper) {
   const initialFromBlock = lastCheckpoint?.last_block_number
     ? lastCheckpoint.last_block_number + 1
     : CONFIG.monitor.startBlock;
+
   const initialToBlock = Math.min(
     currentBlock - CONFIG.monitor.confirmations,
     initialFromBlock + CONFIG.monitor.maxBlockRange,
@@ -112,9 +159,21 @@ async function runCalculator(database: DatabaseWrapper) {
     logger.info('Initial score events processed successfully');
   }
 
-  // Set up periodic score event processing
+  // Set up periodic score event processing with deposit check ratio
+  let depositCheckCount = 0;
+  const DEPOSIT_CHECK_RATIO = 5;
+
   const processInterval = setInterval(async () => {
     try {
+      depositCheckCount = (depositCheckCount + 1) % DEPOSIT_CHECK_RATIO;
+      if (depositCheckCount !== 0) {
+        logger.debug('Skipping calculator run due to deposit check ratio', {
+          currentCount: depositCheckCount,
+          ratio: DEPOSIT_CHECK_RATIO
+        });
+        return;
+      }
+
       const status = await calculator.getStatus();
       if (!status.isRunning) {
         logger.info('Calculator stopped, clearing interval');
@@ -143,6 +202,18 @@ async function runCalculator(database: DatabaseWrapper) {
           lastProcessedBlock: lastCheckpoint.last_block_number,
         });
         await calculator.processScoreEvents(fromBlock, toBlock);
+
+        // Update checkpoint
+        const block = await provider.getBlock(toBlock);
+        if (!block) throw new Error(`Block ${toBlock} not found`);
+
+        await database.updateCheckpoint({
+          component_type: 'calculator',
+          last_block_number: toBlock,
+          block_hash: block.hash!,
+          last_update: new Date().toISOString(),
+        });
+
         logger.info('Score events processed successfully', {
           fromBlock,
           toBlock,
@@ -156,7 +227,7 @@ async function runCalculator(database: DatabaseWrapper) {
         });
       }
     } catch (error) {
-      logger.error('Error processing score events:', { error });
+      await logError(error, 'Error processing score events');
     }
   }, CONFIG.monitor.pollInterval * 1000);
 
@@ -174,15 +245,12 @@ async function runCalculator(database: DatabaseWrapper) {
       const lastCheckpoint = await database.getCheckpoint('calculator');
       logger.info('Calculator Status:', {
         isRunning: status.isRunning,
-        lastProcessedBlock:
-          lastCheckpoint?.last_block_number ?? status.lastProcessedBlock,
+        lastProcessedBlock: lastCheckpoint?.last_block_number ?? status.lastProcessedBlock,
         currentBlock,
-        processingLag:
-          currentBlock -
-          (lastCheckpoint?.last_block_number ?? status.lastProcessedBlock),
+        processingLag: currentBlock - (lastCheckpoint?.last_block_number ?? status.lastProcessedBlock),
       });
     } catch (error) {
-      logger.error('Calculator health check failed:', { error });
+      await logError(error, 'Calculator health check failed');
     }
   }, CONFIG.monitor.healthCheckInterval * 1000);
 
@@ -204,10 +272,25 @@ async function runProfitabilityEngine(database: DatabaseWrapper) {
     address: CONFIG.monitor.stakerAddress,
   });
 
+  if (!CONFIG.profitability?.rewardTokenAddress) {
+    throw new Error('Reward token address not configured');
+  }
+
   const engine = new ProfitabilityEngineWrapper(
     database,
     provider,
     CONFIG.monitor.stakerAddress,
+    logger,
+    {
+      minProfitMargin: BigInt(1e16), // 0.01 ETH
+      gasPriceBuffer: 20, // 20%
+      maxBatchSize: 10,
+      rewardTokenAddress: CONFIG.profitability.rewardTokenAddress,
+      defaultTipReceiver: CONFIG.executor?.tipReceiver || ethers.ZeroAddress,
+      priceFeed: {
+        cacheDuration: 10 * 60 * 1000, // 10 minutes
+      },
+    }
   );
   await engine.start();
 
@@ -221,7 +304,7 @@ async function runProfitabilityEngine(database: DatabaseWrapper) {
         lastUpdateTimestamp: new Date(status.lastUpdateTimestamp).toISOString(),
       });
     } catch (error) {
-      logger.error('Profitability engine health check failed:', { error });
+      await logError(error, 'Profitability engine health check failed');
     }
   }, CONFIG.monitor.healthCheckInterval * 1000);
 
@@ -250,9 +333,13 @@ async function runExecutor() {
     address: CONFIG.monitor.stakerAddress,
   });
 
-  const executor = new ExecutorWrapper(stakerContract, provider, {
+  if (!CONFIG.executor?.privateKey) {
+    throw new Error('Executor private key not configured');
+  }
+
+  const executor = new ExecutorWrapper(stakerContract, provider, ExecutorType.WALLET, {
     wallet: {
-      privateKey: CONFIG.priceFeed.coinmarketcap.apiKey || '',
+      privateKey: CONFIG.executor.privateKey,
       minBalance: ethers.parseEther('0.1'), // 0.1 ETH
       maxPendingTransactions: 5,
     },
@@ -260,7 +347,7 @@ async function runExecutor() {
     minConfirmations: CONFIG.monitor.confirmations,
     maxRetries: CONFIG.monitor.maxRetries,
     retryDelayMs: 5000,
-    transferOutThreshold: ethers.parseEther('0.5'), // 0.5 ETH
+    transferOutThreshold: ethers.parseEther('0.001'), // 0.001 ETH
     gasBoostPercentage: 10, // 10%
     concurrentTransactions: 3,
   });
@@ -278,7 +365,7 @@ async function runExecutor() {
         queueSize: status.queueSize,
       });
     } catch (error) {
-      logger.error('Executor health check failed:', { error });
+      await logError(error, 'Executor health check failed');
     }
   }, CONFIG.monitor.healthCheckInterval * 1000);
 
@@ -292,60 +379,92 @@ async function main() {
       type: CONFIG.monitor.databaseType,
     });
 
-    const components = (process.env.COMPONENTS || '')
-      .split(',')
-      .map((c) => c.trim());
-    runningComponents = {};
+    // Start monitor first
+    logger.info('Starting monitor...');
+    runningComponents.monitor = await runMonitor(database);
 
-    // Start components based on configuration
-    if (components.includes('monitor')) {
-      logger.info('Starting monitor...');
-      runningComponents.monitor = await runMonitor(database);
+    // Wait for initial deposits before starting calculator
+    logger.info('Waiting for initial deposits...');
+    while (!(await waitForDeposits(database))) {
+      await new Promise(resolve => setTimeout(resolve, 60000)); // Check every minute
     }
 
-    if (components.includes('calculator')) {
-      logger.info('Starting calculator...');
-      runningComponents.calculator = await runCalculator(database);
-    }
+    // Start calculator with deposit-dependent scheduling
+    logger.info('Starting calculator...');
+    runningComponents.calculator = await runCalculator(database);
 
-    if (components.includes('profitability')) {
-      logger.info('Starting profitability engine...');
-      runningComponents.profitabilityEngine =
-        await runProfitabilityEngine(database);
-    }
+    // Start profitability engine
+    logger.info('Starting profitability engine...');
+    runningComponents.profitabilityEngine = await runProfitabilityEngine(database);
 
-    if (components.includes('executor')) {
-      logger.info('Starting transaction executor...');
-      runningComponents.transactionExecutor = await runExecutor();
-    }
+    // Set up profitability check interval (every 5 minutes)
+    setInterval(async () => {
+      try {
+        const profitabilityEngine = runningComponents.profitabilityEngine;
+        if (profitabilityEngine) {
+          const deposits = await database.getAllDeposits();
+          await profitabilityEngine.analyzeBatchProfitability(deposits.map(convertDeposit));
+        }
+      } catch (error) {
+        await logError(error, 'Error in profitability check interval');
+      }
+    }, 5 * 60 * 1000); // 5 minutes
 
-    if (Object.keys(runningComponents).length === 0) {
-      throw new Error(
-        'No components configured to run. Set COMPONENTS env var.',
-      );
+    // Start executor with profitability verification
+    logger.info('Starting transaction executor...');
+    runningComponents.transactionExecutor = await runExecutor();
+
+    // Set up profitability verification before execution
+    const executor = runningComponents.transactionExecutor;
+    if (executor) {
+      const originalQueueTransaction = executor.queueTransaction.bind(executor);
+      executor.queueTransaction = async (depositId: bigint, profitability: ProfitabilityCheck) => {
+        try {
+          const profitabilityEngine = runningComponents.profitabilityEngine;
+          if (profitabilityEngine) {
+            const deposits = await database.getAllDeposits();
+            const deposit = deposits.find(d => d.deposit_id === depositId.toString());
+            if (deposit) {
+              const updatedProfitability = await profitabilityEngine.checkProfitability(convertDeposit(deposit));
+              if (!updatedProfitability.canBump) {
+                logger.info('Skipping execution - not profitable');
+                throw new Error('Transaction not profitable');
+              }
+              return await originalQueueTransaction(depositId, updatedProfitability);
+            }
+          }
+          return await originalQueueTransaction(depositId, profitability);
+        } catch (error) {
+          await logError(error, 'Error in execution with profitability check');
+          throw error;
+        }
+      };
     }
 
     process.on('SIGTERM', () => shutdown('SIGTERM'));
     process.on('SIGINT', () => shutdown('SIGINT'));
+
   } catch (error) {
-    logger.error('Fatal error:', { error });
-    process.exit(1);
+    await logError(error, 'Fatal error in main');
+    // Don't exit - let the process continue
+    logger.info('Recovering from error and continuing...');
   }
 }
 
-// Handle uncaught errors
-process.on('uncaughtException', (error) => {
-  logger.error('Uncaught exception:', { error });
-  process.exit(1);
+// Handle uncaught errors without exiting
+process.on('uncaughtException', async (error) => {
+  await logError(error, 'Uncaught exception');
+  // Don't exit - let the process continue
 });
 
-process.on('unhandledRejection', (reason) => {
-  logger.error('Unhandled rejection:', { reason });
-  process.exit(1);
+process.on('unhandledRejection', async (reason) => {
+  await logError(reason, 'Unhandled rejection');
+  // Don't exit - let the process continue
 });
 
 // Run the application
-main().catch((error) => {
-  logger.error('Fatal error:', { error });
-  process.exit(1);
+main().catch(async (error) => {
+  await logError(error, 'Fatal error in main');
+  // Don't exit - let the process continue
+  logger.info('Recovering from error and continuing...');
 });

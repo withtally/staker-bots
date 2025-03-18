@@ -62,6 +62,7 @@ export const CONFIG = {
     gasPriceBuffer: 20, // 20% buffer for gas price volatility
     maxBatchSize: 10,
     defaultTipReceiver: process.env.TIP_RECEIVER_ADDRESS || '',
+    rewardTokenAddress: process.env.REWARD_TOKEN_ADDRESS || '',
     priceFeed: {
       tokenAddress: process.env.PRICE_FEED_TOKEN_ADDRESS || '',
       cacheDuration: 10 * 60 * 1000, // 10 minutes

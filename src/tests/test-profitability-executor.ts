@@ -163,6 +163,7 @@ async function main() {
     minProfitMargin: BigInt(1e13), // 0.00001 ETH - much lower for testing
     gasPriceBuffer: 20, // 20%
     maxBatchSize: 10,
+    rewardTokenAddress: CONFIG.profitability.rewardTokenAddress,
     defaultTipReceiver: CONFIG.executor.tipReceiver || ethers.ZeroAddress,
     priceFeed: {
       cacheDuration: 10 * 60 * 1000, // 10 minutes

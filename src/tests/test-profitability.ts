@@ -188,25 +188,6 @@ async function main() {
     provider,
   );
 
-  // Configure profitability engine
-  logger.info('Configuring profitability engine...');
-  const config: ProfitabilityConfig = {
-    minProfitMargin: BigInt(1e16), // 0.01 ETH
-    gasPriceBuffer: 20, // 20%
-    maxBatchSize: 10,
-    defaultTipReceiver: process.env.TIP_RECEIVER || ethers.ZeroAddress,
-    priceFeed: {
-      cacheDuration: 10 * 60 * 1000, // 10 minutes
-    },
-  };
-
-  logger.info('Profitability config:', {
-    minProfitMargin: ethers.formatEther(config.minProfitMargin),
-    gasPriceBuffer: config.gasPriceBuffer,
-    maxBatchSize: config.maxBatchSize,
-    tipReceiver: config.defaultTipReceiver,
-  });
-
   // Initialize price feed
   const priceFeed = new CoinMarketCapFeed(
     {
@@ -235,6 +216,27 @@ async function main() {
     ): Promise<bigint>;
     REWARD_TOKEN(): Promise<string>;
   };
+
+  // Configure profitability engine
+  logger.info('Configuring profitability engine...');
+  const rewardTokenAddress = await typedContract.REWARD_TOKEN();
+  const config: ProfitabilityConfig = {
+    minProfitMargin: BigInt(1e16), // 0.01 ETH
+    gasPriceBuffer: 20, // 20%
+    maxBatchSize: 10,
+    defaultTipReceiver: process.env.TIP_RECEIVER || ethers.ZeroAddress,
+    rewardTokenAddress,
+    priceFeed: {
+      cacheDuration: 10 * 60 * 1000, // 10 minutes
+    },
+  };
+
+  logger.info('Profitability config:', {
+    minProfitMargin: ethers.formatEther(config.minProfitMargin),
+    gasPriceBuffer: config.gasPriceBuffer,
+    maxBatchSize: config.maxBatchSize,
+    tipReceiver: config.defaultTipReceiver,
+  });
 
   // Initialize profitability engine
   logger.info('Initializing profitability engine...');
