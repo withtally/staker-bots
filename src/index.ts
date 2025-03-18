@@ -1,21 +1,30 @@
-import { DatabaseWrapper } from '@/database';
-import { CONFIG, createProvider } from '@/config';
-import { ConsoleLogger } from '@/monitor/logging';
+import { DatabaseWrapper } from './database';
+import { CONFIG } from './config';
+import { ConsoleLogger } from './monitor/logging';
 import { StakerMonitor } from './monitor/StakerMonitor';
 import { createMonitorConfig } from './monitor/constants';
 import { CalculatorWrapper } from './calculator/CalculatorWrapper';
 import { ExecutorWrapper, ExecutorType } from './executor';
-import { ProfitabilityEngineWrapper } from './profitability';
+import { ProfitabilityEngineWrapper } from './profitability/ProfitabilityEngineWrapper';
 import { ethers } from 'ethers';
-import { STAKER_ABI } from './monitor/constants';
 import fs from 'fs/promises';
 import path from 'path';
-import { ProfitabilityCheck } from '@/profitability/interfaces/types';
-import type { Deposit as DBDeposit } from '@/database/interfaces/types';
-import type { Deposit as ProfitabilityDeposit } from '@/profitability/interfaces/types';
+import { ProfitabilityCheck } from './profitability/interfaces/types';
+import type { Deposit as DBDeposit } from './database/interfaces/types';
+import type { Deposit as ProfitabilityDeposit } from './profitability/interfaces/types';
 
 const logger = new ConsoleLogger('info');
 const ERROR_LOG_PATH = path.join(process.cwd(), 'error.logs');
+
+// Load full staker ABI from tests
+const STAKER_ABI = JSON.parse(
+  await fs.readFile('./src/tests/abis/staker.json', 'utf8'),
+);
+
+// Create provider helper function
+function createProvider() {
+  return new ethers.JsonRpcProvider(CONFIG.monitor.rpcUrl);
+}
 
 // Convert database deposit to profitability deposit
 function convertDeposit(deposit: DBDeposit): ProfitabilityDeposit {
@@ -25,13 +34,13 @@ function convertDeposit(deposit: DBDeposit): ProfitabilityDeposit {
     delegatee_address: deposit.delegatee_address,
     amount: BigInt(deposit.amount),
     created_at: deposit.created_at,
-    updated_at: deposit.updated_at
+    updated_at: deposit.updated_at,
   };
 }
 
-async function logError(error: any, context: string) {
+async function logError(error: unknown, context: string) {
   const timestamp = new Date().toISOString();
-  const errorMessage = `[${timestamp}] ${context}: ${error.message}\n${error.stack}\n\n`;
+  const errorMessage = `[${timestamp}] ${context}: ${error instanceof Error ? error.message : String(error)}\n${error instanceof Error ? error.stack : ''}\n\n`;
   await fs.appendFile(ERROR_LOG_PATH, errorMessage);
   logger.error(context, { error });
 }
@@ -46,13 +55,12 @@ async function waitForDeposits(database: DatabaseWrapper): Promise<boolean> {
   }
 }
 
-let depositCheckCount = 0;
-const DEPOSIT_CHECK_RATIO = 5;
-
-async function shouldRunCalculator(): Promise<boolean> {
-  depositCheckCount = (depositCheckCount + 1) % DEPOSIT_CHECK_RATIO;
-  return depositCheckCount === 0;
-}
+const runningComponents: {
+  monitor?: StakerMonitor;
+  calculator?: CalculatorWrapper;
+  profitabilityEngine?: ProfitabilityEngineWrapper;
+  transactionExecutor?: ExecutorWrapper;
+} = {};
 
 async function shutdown(signal: string) {
   logger.info(`Received ${signal}. Starting graceful shutdown...`);
@@ -76,13 +84,6 @@ async function shutdown(signal: string) {
     process.exit(1);
   }
 }
-
-let runningComponents: {
-  monitor?: StakerMonitor;
-  calculator?: CalculatorWrapper;
-  profitabilityEngine?: ProfitabilityEngineWrapper;
-  transactionExecutor?: ExecutorWrapper;
-} = {};
 
 async function runMonitor(database: DatabaseWrapper) {
   const provider = createProvider();
@@ -169,7 +170,7 @@ async function runCalculator(database: DatabaseWrapper) {
       if (depositCheckCount !== 0) {
         logger.debug('Skipping calculator run due to deposit check ratio', {
           currentCount: depositCheckCount,
-          ratio: DEPOSIT_CHECK_RATIO
+          ratio: DEPOSIT_CHECK_RATIO,
         });
         return;
       }
@@ -245,9 +246,12 @@ async function runCalculator(database: DatabaseWrapper) {
       const lastCheckpoint = await database.getCheckpoint('calculator');
       logger.info('Calculator Status:', {
         isRunning: status.isRunning,
-        lastProcessedBlock: lastCheckpoint?.last_block_number ?? status.lastProcessedBlock,
+        lastProcessedBlock:
+          lastCheckpoint?.last_block_number ?? status.lastProcessedBlock,
         currentBlock,
-        processingLag: currentBlock - (lastCheckpoint?.last_block_number ?? status.lastProcessedBlock),
+        processingLag:
+          currentBlock -
+          (lastCheckpoint?.last_block_number ?? status.lastProcessedBlock),
       });
     } catch (error) {
       await logError(error, 'Calculator health check failed');
@@ -290,7 +294,7 @@ async function runProfitabilityEngine(database: DatabaseWrapper) {
       priceFeed: {
         cacheDuration: 10 * 60 * 1000, // 10 minutes
       },
-    }
+    },
   );
   await engine.start();
 
@@ -337,20 +341,25 @@ async function runExecutor() {
     throw new Error('Executor private key not configured');
   }
 
-  const executor = new ExecutorWrapper(stakerContract, provider, ExecutorType.WALLET, {
-    wallet: {
-      privateKey: CONFIG.executor.privateKey,
-      minBalance: ethers.parseEther('0.1'), // 0.1 ETH
-      maxPendingTransactions: 5,
+  const executor = new ExecutorWrapper(
+    stakerContract,
+    provider,
+    ExecutorType.WALLET,
+    {
+      wallet: {
+        privateKey: CONFIG.executor.privateKey,
+        minBalance: ethers.parseEther('0.1'), // 0.1 ETH
+        maxPendingTransactions: 5,
+      },
+      maxQueueSize: 100,
+      minConfirmations: CONFIG.monitor.confirmations,
+      maxRetries: CONFIG.monitor.maxRetries,
+      retryDelayMs: 5000,
+      transferOutThreshold: ethers.parseEther('0.001'), // 0.001 ETH
+      gasBoostPercentage: 10, // 10%
+      concurrentTransactions: 3,
     },
-    maxQueueSize: 100,
-    minConfirmations: CONFIG.monitor.confirmations,
-    maxRetries: CONFIG.monitor.maxRetries,
-    retryDelayMs: 5000,
-    transferOutThreshold: ethers.parseEther('0.001'), // 0.001 ETH
-    gasBoostPercentage: 10, // 10%
-    concurrentTransactions: 3,
-  });
+  );
 
   await executor.start();
 
@@ -386,7 +395,7 @@ async function main() {
     // Wait for initial deposits before starting calculator
     logger.info('Waiting for initial deposits...');
     while (!(await waitForDeposits(database))) {
-      await new Promise(resolve => setTimeout(resolve, 60000)); // Check every minute
+      await new Promise((resolve) => setTimeout(resolve, 60000)); // Check every minute
     }
 
     // Start calculator with deposit-dependent scheduling
@@ -395,20 +404,26 @@ async function main() {
 
     // Start profitability engine
     logger.info('Starting profitability engine...');
-    runningComponents.profitabilityEngine = await runProfitabilityEngine(database);
+    runningComponents.profitabilityEngine =
+      await runProfitabilityEngine(database);
 
     // Set up profitability check interval (every 5 minutes)
-    setInterval(async () => {
-      try {
-        const profitabilityEngine = runningComponents.profitabilityEngine;
-        if (profitabilityEngine) {
-          const deposits = await database.getAllDeposits();
-          await profitabilityEngine.analyzeBatchProfitability(deposits.map(convertDeposit));
+    setInterval(
+      async () => {
+        try {
+          const profitabilityEngine = runningComponents.profitabilityEngine;
+          if (profitabilityEngine) {
+            const deposits = await database.getAllDeposits();
+            await profitabilityEngine.analyzeBatchProfitability(
+              deposits.map(convertDeposit),
+            );
+          }
+        } catch (error) {
+          await logError(error, 'Error in profitability check interval');
         }
-      } catch (error) {
-        await logError(error, 'Error in profitability check interval');
-      }
-    }, 5 * 60 * 1000); // 5 minutes
+      },
+      5 * 60 * 1000,
+    ); // 5 minutes
 
     // Start executor with profitability verification
     logger.info('Starting transaction executor...');
@@ -418,19 +433,30 @@ async function main() {
     const executor = runningComponents.transactionExecutor;
     if (executor) {
       const originalQueueTransaction = executor.queueTransaction.bind(executor);
-      executor.queueTransaction = async (depositId: bigint, profitability: ProfitabilityCheck) => {
+      executor.queueTransaction = async (
+        depositId: bigint,
+        profitability: ProfitabilityCheck,
+      ) => {
         try {
           const profitabilityEngine = runningComponents.profitabilityEngine;
           if (profitabilityEngine) {
             const deposits = await database.getAllDeposits();
-            const deposit = deposits.find(d => d.deposit_id === depositId.toString());
+            const deposit = deposits.find(
+              (d) => d.deposit_id === depositId.toString(),
+            );
             if (deposit) {
-              const updatedProfitability = await profitabilityEngine.checkProfitability(convertDeposit(deposit));
+              const updatedProfitability =
+                await profitabilityEngine.checkProfitability(
+                  convertDeposit(deposit),
+                );
               if (!updatedProfitability.canBump) {
                 logger.info('Skipping execution - not profitable');
                 throw new Error('Transaction not profitable');
               }
-              return await originalQueueTransaction(depositId, updatedProfitability);
+              return await originalQueueTransaction(
+                depositId,
+                updatedProfitability,
+              );
             }
           }
           return await originalQueueTransaction(depositId, profitability);
@@ -443,7 +469,6 @@ async function main() {
 
     process.on('SIGTERM', () => shutdown('SIGTERM'));
     process.on('SIGINT', () => shutdown('SIGINT'));
-
   } catch (error) {
     await logError(error, 'Fatal error in main');
     // Don't exit - let the process continue
