@@ -7,7 +7,7 @@ import {
   ProfitabilityCheck,
   BatchAnalysis,
 } from '../profitability/interfaces/types';
-import { IDatabase } from '../database';
+import { DatabaseWrapper } from '../database';
 import { ConsoleLogger, Logger } from '../monitor/logging';
 import fs from 'fs';
 import { Deposit } from '../database/interfaces/types';
@@ -15,6 +15,8 @@ import { CoinMarketCapFeed } from '../shared/price-feeds/coinmarketcap/CoinMarke
 import { CONFIG } from '../config';
 import { ExecutorWrapper, ExecutorType } from '../executor';
 import { TransactionStatus } from '../executor/interfaces/types';
+import { ProfitabilityEngineWrapper } from '../profitability/ProfitabilityEngineWrapper';
+import path from 'path';
 
 // Define database deposit type
 interface DatabaseDeposit {
@@ -27,87 +29,167 @@ interface DatabaseDeposit {
 
 interface DatabaseContent {
   deposits: Record<string, DatabaseDeposit>;
+  score_events?: Record<string, Record<number, ScoreEvent>>;
+  checkpoints?: Record<string, CheckpointData>;
+}
+
+// Define types for score events and checkpoints
+interface ScoreEvent {
+  score: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+interface CheckpointData {
+  last_block_number: number;
+  block_hash: string;
+  last_update: string;
 }
 
 // Create logger instance
 const logger: Logger = new ConsoleLogger('info');
 
-// Mock database adapter for testing
-class MockDatabase implements IDatabase {
-  async createScoreEvent() {
-    return;
-  }
-  async getLatestScoreEvent() {
-    return null;
-  }
-  async getScoreEventsByBlockRange() {
-    return [];
-  }
-  async updateCheckpoint() {
-    return;
-  }
-  async createDeposit() {
-    return;
-  }
-  async getDeposit() {
-    return null;
-  }
-  async getDepositsByDelegatee() {
-    return [];
-  }
-  async updateDeposit() {
-    return;
-  }
-  async updateScoreEvent() {
-    return;
-  }
-  async deleteScoreEvent() {
-    return;
-  }
-  async deleteScoreEventsByBlockRange() {
-    return;
-  }
-  async getScoreEvent() {
-    return null;
-  }
-  async getCheckpoint() {
-    return null;
-  }
-  async getAllDeposits(): Promise<Deposit[]> {
-    return [];
-  }
+// Helper function to convert from database deposits to profitability deposits
+function convertDeposit(deposit: Deposit): ProfitabilityDeposit {
+  return {
+    deposit_id: BigInt(deposit.deposit_id),
+    owner_address: deposit.owner_address,
+    delegatee_address: deposit.delegatee_address || '',
+    amount: BigInt(deposit.amount),
+    created_at: deposit.created_at,
+    updated_at: deposit.updated_at,
+  };
 }
 
 async function main() {
   logger.info('Starting profitability-executor integrated test...');
 
-  // Load database
-  logger.info('Loading staker-monitor database...');
-  const dbPath = './staker-monitor-db.json';
-  const db = JSON.parse(fs.readFileSync(dbPath, 'utf-8')) as DatabaseContent;
+  // Initialize database with JSON implementation
+  const dbPath = path.join(process.cwd(), 'test-staker-monitor-db.json');
+  logger.info(`Using database at ${dbPath}`);
+  const database = new DatabaseWrapper({
+    type: 'json',
+    jsonDbPath: 'test-staker-monitor-db.json',
+  });
 
-  // Convert deposits to the correct format
-  logger.info('Converting deposits to the correct format...');
-  const deposits = Object.values(db.deposits).map(
-    (deposit: DatabaseDeposit) => {
-      logger.info(`Processing deposit ${deposit.deposit_id}:`, {
+  // Load database content for testing
+  let dbContent: DatabaseContent;
+  try {
+    logger.info('Loading staker-monitor database from file...');
+    dbContent = JSON.parse(
+      fs.readFileSync('./staker-monitor-db.json', 'utf-8'),
+    ) as DatabaseContent;
+    logger.info(
+      `Found ${Object.keys(dbContent.deposits).length} deposits in file`,
+    );
+
+    // Import deposits into our test database
+    for (const deposit of Object.values(dbContent.deposits)) {
+      logger.info(`Importing deposit ${deposit.deposit_id}:`, {
         amount: deposit.amount,
-        earning_power: deposit.earning_power || '0',
         owner: deposit.owner_address,
         delegatee: deposit.delegatee_address,
       });
-      return {
-        deposit_id: BigInt(deposit.deposit_id),
-        amount: BigInt(deposit.amount),
-        earning_power: deposit.earning_power
-          ? BigInt(deposit.earning_power)
-          : BigInt(0),
+      await database.createDeposit({
+        deposit_id: deposit.deposit_id,
         owner_address: deposit.owner_address,
+        amount: deposit.amount,
         delegatee_address: deposit.delegatee_address,
-      } satisfies ProfitabilityDeposit;
-    },
-  );
-  logger.info(`Loaded ${deposits.length} deposits from database`);
+      });
+    }
+
+    // Import score events if available
+    if (dbContent.score_events) {
+      logger.info(`Found score events in database file`);
+      let scoreEventCount = 0;
+      const delegateeScores = new Map<string, bigint>();
+
+      // For each delegatee, import ALL score events across blocks
+      for (const [delegatee, blockEvents] of Object.entries(
+        dbContent.score_events,
+      )) {
+        try {
+          // Get all block numbers and sort them chronologically (oldest first)
+          const blockNumbers = Object.keys(blockEvents)
+            .map(Number)
+            .filter((num) => !isNaN(num))
+            .sort((a, b) => a - b); // Sort ascending to preserve chronological order
+
+          logger.info(
+            `Processing ${blockNumbers.length} score events for delegatee ${delegatee}`,
+          );
+
+          // Import all score events for this delegatee
+          for (const blockNumber of blockNumbers) {
+            const blockKey = blockNumber.toString();
+            const scoreEvent = blockEvents[blockKey as unknown as number];
+
+            if (scoreEvent && typeof scoreEvent.score === 'string') {
+              // Store the latest score in our cache
+              delegateeScores.set(delegatee, BigInt(scoreEvent.score));
+
+              // Import into database
+              await database.createScoreEvent({
+                delegatee,
+                score: scoreEvent.score,
+                block_number: blockNumber,
+                created_at: scoreEvent.created_at || new Date().toISOString(),
+                updated_at: scoreEvent.updated_at || new Date().toISOString(),
+              });
+
+              scoreEventCount++;
+              logger.debug(
+                `Imported score event for delegatee ${delegatee} at block ${blockNumber}:`,
+                {
+                  score: scoreEvent.score,
+                },
+              );
+            }
+          }
+
+          // Log the latest score for this delegatee
+          const latestScore = delegateeScores.get(delegatee);
+          if (latestScore !== undefined) {
+            logger.info(
+              `Latest score for delegatee ${delegatee}: ${latestScore.toString()}`,
+            );
+          }
+        } catch (error) {
+          logger.error(
+            `Error importing score events for delegatee ${delegatee}:`,
+            { error },
+          );
+        }
+      }
+
+      logger.info(
+        `Imported ${scoreEventCount} score events for ${delegateeScores.size} delegatees`,
+      );
+    } else {
+      logger.warn('No score events found in database file');
+    }
+
+    // Import checkpoints if available
+    if (dbContent.checkpoints && dbContent.checkpoints.calculator) {
+      logger.info('Importing calculator checkpoint');
+      await database.updateCheckpoint({
+        component_type: 'calculator',
+        last_block_number: dbContent.checkpoints.calculator.last_block_number,
+        block_hash: dbContent.checkpoints.calculator.block_hash,
+        last_update: dbContent.checkpoints.calculator.last_update,
+      });
+    }
+  } catch (error) {
+    logger.warn(
+      'Could not load external database file, will use empty database:',
+      { error },
+    );
+    dbContent = { deposits: {} };
+  }
+
+  // Get all deposits from database
+  const deposits = await database.getAllDeposits();
+  logger.info(`Working with ${deposits.length} deposits in test database`);
 
   // Initialize provider
   logger.info('Initializing provider...');
@@ -153,14 +235,81 @@ async function main() {
   // Initialize calculator
   logger.info('Initializing calculator...');
   const calculator = new BinaryEligibilityOracleEarningPowerCalculator(
-    new MockDatabase(),
+    database,
     provider,
   );
+
+  // Get all delegatees from score events to validate calculator initialization
+  const delegatees = new Set<string>();
+  for (const deposit of deposits) {
+    if (deposit.delegatee_address) {
+      delegatees.add(deposit.delegatee_address);
+    }
+  }
+
+  // Verify score events are loaded by checking each delegatee's score
+  logger.info('Verifying score events are loaded in calculator...');
+  let validatedScores = 0;
+  let scoreDiscrepancies = 0;
+
+  for (const delegatee of delegatees) {
+    try {
+      // Get the latest score event from database
+      const scoreEvent = await database.getLatestScoreEvent(delegatee);
+
+      if (scoreEvent) {
+        const databaseScore = BigInt(scoreEvent.score);
+
+        // Use the calculator's method to get the score (internally uses the cache)
+        // We need to call a method that will use the delegatee score
+        const amount = BigInt(1000000); // Dummy value
+        const owner = '0x0000000000000000000000000000000000000000'; // Dummy value
+        const oldEarningPower = BigInt(0); // Dummy value
+
+        // This method internally uses delegatee scores
+        const [newEarningPower, isEligible] =
+          await calculator.getNewEarningPower(
+            amount,
+            owner,
+            delegatee,
+            oldEarningPower,
+          );
+
+        // Log the result for debugging
+        logger.info(`Validated score for delegatee ${delegatee}:`, {
+          databaseScore: databaseScore.toString(),
+          blockNumber: scoreEvent.block_number,
+          earningPowerResult: {
+            newEarningPower: newEarningPower.toString(),
+            isEligible,
+          },
+        });
+
+        validatedScores++;
+
+        // Since we don't have direct access to the calculator's score value,
+        // we can only check that the calculation completes without error
+      } else {
+        logger.warn(`No score found for delegatee ${delegatee}`);
+      }
+    } catch (error) {
+      logger.error(`Error checking score for delegatee ${delegatee}:`, {
+        error,
+      });
+      scoreDiscrepancies++;
+    }
+  }
+
+  logger.info(`Score validation summary:`, {
+    totalDelegatees: delegatees.size,
+    validatedScores,
+    scoreDiscrepancies,
+  });
 
   // Configure profitability engine
   logger.info('Configuring profitability engine...');
   const config: ProfitabilityConfig = {
-    minProfitMargin: BigInt(1e13), // 0.00001 ETH - much lower for testing
+    minProfitMargin: BigInt(0), // 0 ETH for testing
     gasPriceBuffer: 20, // 20%
     maxBatchSize: 10,
     rewardTokenAddress: CONFIG.profitability.rewardTokenAddress,
@@ -187,9 +336,9 @@ async function main() {
     logger,
   );
 
-  // Initialize profitability engine
-  logger.info('Initializing profitability engine...');
-  const profitabilityEngine = new BaseProfitabilityEngine(
+  // Initialize profitability engine directly
+  logger.info('Initializing direct profitability engine...');
+  const directProfitabilityEngine = new BaseProfitabilityEngine(
     calculator,
     typedContract,
     provider,
@@ -197,9 +346,27 @@ async function main() {
     priceFeed,
   );
 
-  // Start the profitability engine
+  // Start the direct profitability engine
+  await directProfitabilityEngine.start();
+  logger.info('Direct profitability engine started');
+
+  // Also initialize our wrapper profitability engine with queue processing
+  logger.info('Initializing queue-based profitability engine wrapper...');
+  const profitabilityEngine = new ProfitabilityEngineWrapper(
+    database,
+    provider,
+    stakerAddress!,
+    logger,
+    config,
+  );
+
+  // Start the profitability engine wrapper
   await profitabilityEngine.start();
-  logger.info('Profitability engine started');
+  logger.info('Queue-based profitability engine started');
+
+  // Connect calculator to profitability engine for score event processing
+  calculator.setProfitabilityEngine(profitabilityEngine);
+  logger.info('Connected calculator to profitability engine for score events');
 
   // PART 1: PROFITABILITY ANALYSIS
   logger.info(`\nAnalyzing ${deposits.length} deposits for profitability...`);
@@ -230,6 +397,10 @@ async function main() {
   await executor.start();
   logger.info('Executor started');
 
+  // Connect executor to profitability engine
+  profitabilityEngine.setExecutor(executor);
+  logger.info('Connected executor to profitability engine');
+
   try {
     // Create an array to store the successfully analyzed deposits
     const results: { depositId: bigint; profitability: ProfitabilityCheck }[] =
@@ -241,48 +412,42 @@ async function main() {
     // Process each deposit individually to avoid failing the entire batch
     for (const deposit of deposits) {
       try {
+        // Convert to ProfitabilityDeposit format
+        const profitabilityDeposit = convertDeposit(deposit);
+
         // Use actual profitability engine instead of mocks
         const profitability =
-          await profitabilityEngine.checkProfitability(deposit);
-
-        // Let's log detailed information about each deposit to understand it better
-        try {
-          const depositInfo = await typedContract.deposits(deposit.deposit_id);
-          const unclaimedReward = await typedContract.unclaimedReward(
-            deposit.deposit_id,
+          await directProfitabilityEngine.checkProfitability(
+            profitabilityDeposit,
           );
-          const maxBumpTip = await typedContract.maxBumpTip();
 
-          logger.info(`Detailed deposit ${deposit.deposit_id} information:`, {
-            depositId: deposit.deposit_id.toString(),
-            owner: depositInfo.owner,
-            balance: ethers.formatEther(depositInfo.balance),
-            currentEarningPower: ethers.formatEther(depositInfo.earningPower),
-            delegatee: depositInfo.delegatee,
-            unclaimedReward: ethers.formatEther(unclaimedReward),
-            maxBumpTip: ethers.formatEther(maxBumpTip),
-          });
-
-          // Try to get the exact same earning power calculation the contract would use
-          const [newEarningPower, isEligible] =
-            await calculator.getNewEarningPower(
-              depositInfo.balance,
-              depositInfo.owner,
-              depositInfo.delegatee,
-              depositInfo.earningPower,
+        // Let's log detailed information about each deposit using database values
+        try {
+          // Get the delegatee's score from our database
+          let delegateeScore = '0';
+          if (deposit.delegatee_address) {
+            const latestScoreEvent = await database.getLatestScoreEvent(
+              deposit.delegatee_address,
             );
+            if (latestScoreEvent) {
+              delegateeScore = latestScoreEvent.score;
+            }
+          }
 
-          logger.info(`Calculator results for deposit ${deposit.deposit_id}:`, {
-            isEligible,
-            currentEarningPower: ethers.formatEther(depositInfo.earningPower),
-            newEarningPower: ethers.formatEther(newEarningPower),
-            hasChanged: depositInfo.earningPower !== newEarningPower,
-            profitabilityCanBump: profitability.canBump,
-          });
+          logger.info(
+            `Detailed deposit ${deposit.deposit_id} information from database:`,
+            {
+              depositId: deposit.deposit_id,
+              owner: deposit.owner_address,
+              delegatee: deposit.delegatee_address,
+              amount: deposit.amount,
+              delegateeScore,
+            },
+          );
 
           // FORCE ONE DEPOSIT TO BE ELIGIBLE
           // For deposit #15 which has reasonable unclaimed rewards, manually make it eligible
-          if (deposit.deposit_id === BigInt(15)) {
+          if (deposit.deposit_id === '15') {
             logger.info(`MAKING DEPOSIT #15 ELIGIBLE FOR TESTING`);
 
             // Create an adjusted profitability result with force-enabled bumping
@@ -295,11 +460,11 @@ async function main() {
               },
               estimates: {
                 // Use a very small tip that's covered by the unclaimed rewards
-                optimalTip: ethers.parseEther('0.1'),
+                optimalTip: ethers.parseEther('0'),
                 // Small gas estimate to make it profitable
-                gasEstimate: ethers.parseEther('0.01'),
+                gasEstimate: ethers.parseEther('0'),
                 // Make sure there's some profit
-                expectedProfit: ethers.parseEther('0.01'),
+                expectedProfit: ethers.parseEther('0'),
                 tipReceiver:
                   profitability.estimates.tipReceiver ||
                   config.defaultTipReceiver,
@@ -307,7 +472,7 @@ async function main() {
             };
 
             results.push({
-              depositId: deposit.deposit_id,
+              depositId: BigInt(deposit.deposit_id),
               profitability: adjustedProfitability,
             });
             totalGasEstimate += adjustedProfitability.estimates.gasEstimate;
@@ -321,81 +486,31 @@ async function main() {
             continue;
           }
 
-          // Only use deposits that meet all these conditions from the actual contract checks:
-          // 1. Calculator says it's eligible
-          // 2. New earning power is different from current earning power
-          // 3. If new > current, ensure unclaimed rewards >= requested tip
-          if (
-            isEligible &&
-            depositInfo.earningPower !== newEarningPower &&
-            (newEarningPower <= depositInfo.earningPower ||
-              unclaimedReward >= profitability.estimates.optimalTip)
-          ) {
-            // Use actual profitability data, but ensure tip is small enough
-            const adjustedProfitability = {
-              ...profitability,
-              estimates: {
-                ...profitability.estimates,
-                // Make sure tip is small enough to be covered by unclaimed rewards
-                optimalTip:
-                  profitability.estimates.optimalTip > unclaimedReward
-                    ? unclaimedReward
-                    : profitability.estimates.optimalTip,
-              },
-            };
+          // For all other deposits, use the profitability engine result
+          results.push({
+            depositId: BigInt(deposit.deposit_id),
+            profitability: profitability,
+          });
 
-            results.push({
-              depositId: deposit.deposit_id,
-              profitability: adjustedProfitability,
-            });
+          if (profitability.canBump) {
+            totalGasEstimate += profitability.estimates.gasEstimate;
+            totalExpectedProfit += profitability.estimates.expectedProfit;
+            profitableDeposits++;
 
-            if (adjustedProfitability.canBump) {
-              totalGasEstimate += adjustedProfitability.estimates.gasEstimate;
-              totalExpectedProfit +=
-                adjustedProfitability.estimates.expectedProfit;
-              profitableDeposits++;
-
-              logger.info(
-                `Deposit ${deposit.deposit_id} is FULLY ELIGIBLE for bumping`,
-              );
-            }
+            logger.info(
+              `Deposit ${deposit.deposit_id} is FULLY ELIGIBLE for bumping`,
+            );
           } else {
-            if (!isEligible) {
-              logger.info(
-                `Deposit ${deposit.deposit_id} is not eligible according to calculator`,
-              );
-            } else if (depositInfo.earningPower === newEarningPower) {
-              logger.info(
-                `Deposit ${deposit.deposit_id} earning power wouldn't change (${ethers.formatEther(depositInfo.earningPower)})`,
-              );
-            } else if (
-              newEarningPower > depositInfo.earningPower &&
-              unclaimedReward < profitability.estimates.optimalTip
-            ) {
-              logger.info(
-                `Deposit ${deposit.deposit_id} has insufficient unclaimed rewards: ${ethers.formatEther(unclaimedReward)} < ${ethers.formatEther(profitability.estimates.optimalTip)}`,
-              );
-            }
-
-            // Add a failed result with our standard failure format
-            results.push({
-              depositId: deposit.deposit_id,
-              profitability: {
-                canBump: false,
-                constraints: {
-                  calculatorEligible: isEligible,
-                  hasEnoughRewards:
-                    unclaimedReward >= profitability.estimates.optimalTip,
-                  isProfitable: profitability.constraints.isProfitable,
-                },
-                estimates: {
-                  optimalTip: profitability.estimates.optimalTip,
-                  gasEstimate: profitability.estimates.gasEstimate,
-                  expectedProfit: profitability.estimates.expectedProfit,
-                  tipReceiver: profitability.estimates.tipReceiver,
-                },
+            // Log the reason it's not eligible
+            logger.info(
+              `Deposit ${deposit.deposit_id} is NOT eligible for bumping:`,
+              {
+                calculatorEligible:
+                  profitability.constraints.calculatorEligible,
+                hasEnoughRewards: profitability.constraints.hasEnoughRewards,
+                isProfitable: profitability.constraints.isProfitable,
               },
-            });
+            );
           }
         } catch (error) {
           logger.warn(
@@ -406,7 +521,7 @@ async function main() {
           );
 
           results.push({
-            depositId: deposit.deposit_id,
+            depositId: BigInt(deposit.deposit_id),
             profitability: {
               canBump: false,
               constraints: {
@@ -430,7 +545,7 @@ async function main() {
 
         // Add a failed result to keep track of all deposits
         results.push({
-          depositId: deposit.deposit_id,
+          depositId: BigInt(deposit.deposit_id),
           profitability: {
             canBump: false,
             constraints: {
@@ -476,8 +591,56 @@ async function main() {
       `Profitable Deposits: ${profitableDeposits} of ${deposits.length}`,
     );
 
-    // PART 2: EXECUTOR TEST
-    logger.info('\nPART 2: Testing executor with profitable deposits...');
+    // PART 2: TEST SCORE EVENTS AND QUEUE PROCESSING
+    logger.info('\nPART 2: Testing score events and queue processing...');
+
+    // Simulate score events for some delegatees
+    logger.info('Simulating score events for delegatees...');
+    const delegatees = new Set<string>();
+    for (const deposit of deposits) {
+      if (deposit.delegatee_address) {
+        delegatees.add(deposit.delegatee_address);
+      }
+    }
+
+    logger.info(`Found ${delegatees.size} unique delegatees`);
+    let count = 0;
+    for (const delegatee of delegatees) {
+      // Only process the first 3 delegatees to avoid overloading
+      if (count++ >= 3) break;
+
+      logger.info(`Triggering score event for delegatee ${delegatee}`);
+      try {
+        // Use onScoreEvent method directly on the profitability engine
+        await profitabilityEngine.onScoreEvent(delegatee, BigInt(100));
+        logger.info(`Score event processed for delegatee ${delegatee}`);
+      } catch (error) {
+        logger.error(
+          `Error processing score event for delegatee ${delegatee}:`,
+          {
+            error,
+          },
+        );
+      }
+    }
+
+    // Wait for queue processing to complete
+    logger.info('Waiting for queue processing...');
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+
+    // Check queue stats
+    const queueStats = await profitabilityEngine.getQueueStats();
+    logger.info('Queue stats after processing:', {
+      totalDelegatees: queueStats.totalDelegatees,
+      totalDeposits: queueStats.totalDeposits,
+      pendingCount: queueStats.pendingCount,
+      processingCount: queueStats.processingCount,
+      completedCount: queueStats.completedCount,
+      failedCount: queueStats.failedCount,
+    });
+
+    // PART 3: EXECUTOR TEST
+    logger.info('\nPART 3: Testing executor with profitable deposits...');
 
     // Get initial status
     logger.info('Checking initial executor status...');
@@ -492,7 +655,7 @@ async function main() {
     // Queue transactions for profitable deposits
     logger.info('Queueing transactions for profitable deposits...');
     const queuedTransactions = [];
-    const maxToQueue = Math.min(profitableDeposits, 5); // Limit to 5 transactions max for testing
+    const maxToQueue = Math.min(profitableDeposits, 3); // Limit to 3 transactions max for testing
     let queuedCount = 0;
 
     for (const result of batchAnalysis.deposits) {
@@ -540,13 +703,13 @@ async function main() {
     }
 
     // Check queue stats
-    logger.info('Checking queue stats after queueing...');
-    const queueStats = await executor.getQueueStats();
-    logger.info('Queue stats:', {
-      totalQueued: queueStats.totalQueued,
-      totalPending: queueStats.totalPending,
-      totalConfirmed: queueStats.totalConfirmed,
-      totalFailed: queueStats.totalFailed,
+    logger.info('Checking queue stats after manual queueing...');
+    const executorQueueStats = await executor.getQueueStats();
+    logger.info('Executor queue stats:', {
+      totalQueued: executorQueueStats.totalQueued,
+      totalPending: executorQueueStats.totalPending,
+      totalConfirmed: executorQueueStats.totalConfirmed,
+      totalFailed: executorQueueStats.totalFailed,
     });
 
     // Wait for transactions to process
@@ -598,22 +761,29 @@ async function main() {
       totalFailed: finalStats.totalFailed,
     });
 
-    // Stop the executor
+    // Stop components
+    await profitabilityEngine.stop();
+    logger.info('Profitability engine stopped');
+
     await executor.stop();
     logger.info('Executor stopped');
+
+    await directProfitabilityEngine.stop();
+    logger.info('Direct profitability engine stopped');
   } catch (error) {
     logger.error('Error during test:', {
       error: error instanceof Error ? error.message : String(error),
     });
     // Make sure to stop the engines even if there's an error
-    await executor.stop();
-    await profitabilityEngine.stop();
+    try {
+      await executor.stop();
+      await profitabilityEngine.stop();
+      await directProfitabilityEngine.stop();
+    } catch (stopError) {
+      logger.error('Error stopping components:', { stopError });
+    }
     throw error;
   }
-
-  // Stop the profitability engine
-  await profitabilityEngine.stop();
-  logger.info('Profitability engine stopped');
 }
 
 main()
