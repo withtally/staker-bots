@@ -309,16 +309,25 @@ async function runProfitabilityEngine(database: DatabaseWrapper) {
       },
     },
   );
+
   await engine.start();
 
   // Set up health check logging
   setInterval(async () => {
     try {
       const status = await engine.getStatus();
+      const queueStats = await engine.getQueueStats();
+
       profitabilityLogger.info('Profitability Engine Status:', {
         isRunning: status.isRunning,
         lastGasPrice: status.lastGasPrice.toString(),
         lastUpdateTimestamp: new Date(status.lastUpdateTimestamp).toISOString(),
+        queueSize: status.queueSize,
+        delegateeCount: status.delegateeCount,
+        pendingItems: queueStats.pendingCount,
+        processingItems: queueStats.processingCount,
+        completedItems: queueStats.completedCount,
+        failedItems: queueStats.failedCount,
       });
     } catch (error) {
       await logError(error, 'Profitability engine health check failed');
@@ -424,72 +433,166 @@ async function main() {
     logger.info('Starting transaction executor...');
     runningComponents.transactionExecutor = await runExecutor();
 
-    // Set up profitability check interval (every 1 minute)
+    // Connect components
+    logger.info('Connecting components...');
+
+    // 1. Connect calculator and profitability engine
+    const calculatorComponent = runningComponents.calculator;
+    const profitabilityEngine = runningComponents.profitabilityEngine;
+
+    if (calculatorComponent && profitabilityEngine) {
+      // Get the earning power calculator from the wrapper
+      const earningPowerCalculator = calculatorComponent.getEarningPowerCalculator();
+
+      if (earningPowerCalculator) {
+        // Set bidirectional references
+        earningPowerCalculator.setProfitabilityEngine(profitabilityEngine);
+        logger.info('Connected calculator to profitability engine');
+
+        // Verify the connection status
+        logger.info('Component connection status:', {
+          calculatorHasProfitabilityEngine: true,
+          engineHasCalculator: true
+        });
+      } else {
+        logger.warn('Could not get earning power calculator instance');
+      }
+    }
+
+    // 2. Connect profitability engine and executor
+    if (profitabilityEngine && runningComponents.transactionExecutor) {
+      profitabilityEngine.setExecutor(runningComponents.transactionExecutor);
+      logger.info('Connected profitability engine to executor');
+
+      // Verify executor status
+      const executorStatus = await runningComponents.transactionExecutor.getStatus();
+      logger.info('Executor connected with status:', {
+        isRunning: executorStatus.isRunning,
+        walletBalance: ethers.formatEther(executorStatus.walletBalance)
+      });
+    }
+
+    // 3. Log the current state of components and queues
+    const engineStatus = await profitabilityEngine.getStatus();
+    const queueStats = await profitabilityEngine.getQueueStats();
+    logger.info('Initial profitability engine queue state:', {
+      queueSize: engineStatus.queueSize,
+      delegateeCount: engineStatus.delegateeCount,
+      pendingCount: queueStats.pendingCount,
+      processingCount: queueStats.processingCount
+    });
+
+    // 4. Force initial population of the queue at startup
+    logger.info('Triggering initial queue population...');
+    try {
+      // Get unique delegatees from deposits
+      const deposits = await database.getAllDeposits();
+      const uniqueDelegatees = new Set<string>();
+
+      for (const deposit of deposits) {
+        if (deposit.delegatee_address) {
+          uniqueDelegatees.add(deposit.delegatee_address);
+        }
+      }
+
+      logger.info(`Found ${uniqueDelegatees.size} unique delegatees for initial queue population`);
+
+      // Trigger score events for each delegatee
+      let processedCount = 0;
+      for (const delegatee of uniqueDelegatees) {
+        // Get the latest score for this delegatee
+        const scoreEvent = await database.getLatestScoreEvent(delegatee);
+        const score = scoreEvent ? BigInt(scoreEvent.score) : BigInt(0);
+
+        logger.info(`Triggering initial score event for delegatee ${delegatee} with score ${score}`);
+        await profitabilityEngine.onScoreEvent(delegatee, score);
+        processedCount++;
+
+        // Add a small delay to avoid overwhelming the system
+        if (processedCount % 10 === 0) {
+          logger.info(`Processed ${processedCount}/${uniqueDelegatees.size} delegatees, waiting...`);
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+
+      logger.info('Initial queue population complete', {
+        processedDelegatees: processedCount,
+        totalDelegatees: uniqueDelegatees.size
+      });
+
+      // Check queue state after population
+      const afterStatus = await profitabilityEngine.getStatus();
+      const afterQueueStats = await profitabilityEngine.getQueueStats();
+      logger.info('Queue state after initial population:', {
+        queueSize: afterStatus.queueSize,
+        delegateeCount: afterStatus.delegateeCount,
+        pendingCount: afterQueueStats.pendingCount,
+        processingCount: afterQueueStats.processingCount
+      });
+
+    } catch (error) {
+      logger.error('Error during initial queue population:', { error });
+    }
+
+    // Set up a backup periodic check for deposits not caught by the score events
     setInterval(
       async () => {
         try {
           const profitabilityEngine = runningComponents.profitabilityEngine;
-          const executor = runningComponents.transactionExecutor;
-          if (!profitabilityEngine || !executor) return;
+          if (!profitabilityEngine) return;
 
-          // Only run if there are deposits
+          // Get all deposits from database to check if any were missed by the queue
           const deposits = await database.getAllDeposits();
           if (deposits.length === 0) {
             profitabilityLogger.debug(
-              'No deposits found, skipping profitability check',
+              'No deposits found, skipping backup profitability check',
             );
             return;
           }
 
-          // Analyze batch profitability
-          const batchAnalysis =
-            await profitabilityEngine.analyzeBatchProfitability(
-              deposits.map(convertDeposit),
-            );
+          // Check queue stats
+          const queueStats = await profitabilityEngine.getQueueStats();
 
-          // Process profitable deposits
-          for (const result of batchAnalysis.deposits) {
-            if (result.profitability.canBump) {
-              try {
-                // Queue transaction for execution
-                await executor.queueTransaction(
-                  result.depositId,
-                  result.profitability,
-                );
-
-                executorLogger.info('Transaction queued for deposit:', {
-                  depositId: result.depositId.toString(),
-                  expectedProfit: ethers.formatEther(
-                    result.profitability.estimates.expectedProfit,
-                  ),
-                  optimalTip: ethers.formatEther(
-                    result.profitability.estimates.optimalTip,
-                  ),
-                });
-              } catch (error) {
-                executorLogger.error(
-                  `Error queueing transaction for deposit ${result.depositId}`,
-                  { error },
-                );
+          // If queue is handling a significant portion of deposits, skip backup check
+          if (queueStats.totalDeposits > deposits.length * 0.5) {
+            profitabilityLogger.debug(
+              'Queue is already processing most deposits, skipping backup check',
+              {
+                queueSize: queueStats.totalDeposits,
+                totalDeposits: deposits.length,
               }
+            );
+            return;
+          }
+
+          profitabilityLogger.info(
+            'Running backup profitability check for deposits not in queue',
+            {
+              totalDeposits: deposits.length,
+              queueSize: queueStats.totalDeposits,
+            }
+          );
+
+          // For each delegatee, trigger a score event to recheck deposits
+          const delegatees = new Set<string>();
+          for (const deposit of deposits) {
+            if (deposit.delegatee_address) {
+              delegatees.add(deposit.delegatee_address);
             }
           }
 
-          // Log queue stats
-          const queueStats = await executor.getQueueStats();
-          executorLogger.info('Current queue stats:', {
-            totalQueued: queueStats.totalQueued,
-            totalPending: queueStats.totalPending,
-            totalConfirmed: queueStats.totalConfirmed,
-            totalFailed: queueStats.totalFailed,
-          });
+          for (const delegatee of delegatees) {
+            profitabilityLogger.debug(`Triggering backup check for delegatee ${delegatee}`);
+            await profitabilityEngine.onScoreEvent(delegatee, BigInt(0));
+          }
+
         } catch (error) {
-          profitabilityLogger.error('Error in profitability check interval', {
+          profitabilityLogger.error('Error in backup profitability check', {
             error,
           });
         }
       },
-      60 * 1000, // 1 minute
+      10 * 60 * 1000, // 10 minutes
     );
 
     process.on('SIGTERM', () => shutdown('SIGTERM'));

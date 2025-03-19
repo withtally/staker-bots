@@ -11,7 +11,7 @@ pnpm-lock.yaml
 
 # Output files
 staker-monitor-db.json
-
+test-staker-monitor-db.json
 # Build output
 dist/
 build/
