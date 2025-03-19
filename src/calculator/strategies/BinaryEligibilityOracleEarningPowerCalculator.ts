@@ -102,11 +102,11 @@ export class BinaryEligibilityOracleEarningPowerCalculator
         toBlock,
       });
 
-      // Try getting events with a wider block range for testing
+      // Query events for the exact block range
       const events = await this.contract.queryFilter(
         filter,
-        fromBlock - 100, // Look back 100 blocks
-        toBlock + 100, // Look forward 100 blocks
+        fromBlock,
+        toBlock,
       );
 
       this.logger.info('Raw events from contract:', {

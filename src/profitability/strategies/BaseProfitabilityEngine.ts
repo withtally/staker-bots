@@ -81,12 +81,12 @@ export class BaseProfitabilityEngine implements IProfitabilityEngine {
 
   async checkProfitability(deposit: Deposit): Promise<ProfitabilityCheck> {
     try {
-      // Validate deposit exists by checking owner
-      const deposits = this.stakerContract.deposits;
-      const depositInfo = await deposits(deposit.deposit_id);
-      if (!depositInfo.owner) {
-        this.logger.error('Deposit does not exist:', {
+      // Validate deposit has required fields
+      if (!deposit.owner_address || !deposit.amount) {
+        this.logger.error('Invalid deposit data:', {
           depositId: deposit.deposit_id,
+          owner: deposit.owner_address,
+          amount: deposit.amount?.toString(),
         });
         return this.createFailedProfitabilityCheck('calculatorEligible');
       }
@@ -419,8 +419,17 @@ export class BaseProfitabilityEngine implements IProfitabilityEngine {
     totalGasEstimate: bigint,
     totalExpectedProfit: bigint,
   ): number {
-    // Simple optimization: if profit per deposit decreases as batch size increases,
-    // reduce batch size until profit per deposit is maximized
+    // If no deposits are available, return 0
+    if (availableDeposits === 0) {
+      return 0;
+    }
+
+    // If no gas cost or profit, use max batch size
+    if (totalGasEstimate === BigInt(0) || totalExpectedProfit === BigInt(0)) {
+      return Math.min(availableDeposits, this.config.maxBatchSize);
+    }
+
+    // Calculate per-deposit metrics
     const profitPerDeposit = totalExpectedProfit / BigInt(availableDeposits);
     const gasPerDeposit = totalGasEstimate / BigInt(availableDeposits);
 
