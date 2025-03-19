@@ -74,7 +74,8 @@ export class CalculatorWrapper implements ICalculatorStrategy {
    * Get the earning power calculator instance
    */
   getEarningPowerCalculator(): BinaryEligibilityOracleEarningPowerCalculator | null {
-    return this.strategy instanceof BinaryEligibilityOracleEarningPowerCalculator
+    return this.strategy instanceof
+      BinaryEligibilityOracleEarningPowerCalculator
       ? this.strategy
       : null;
   }

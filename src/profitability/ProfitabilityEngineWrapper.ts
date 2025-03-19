@@ -13,14 +13,27 @@ import { STAKER_ABI } from './constants';
 import { CONFIG } from '@/config';
 import { CoinMarketCapFeed } from '@/shared/price-feeds/coinmarketcap/CoinMarketCapFeed';
 import { Logger } from '@/monitor/logging';
-import { ProcessingQueueStatus, TransactionQueueStatus } from '@/database/interfaces/types';
-import { v4 as uuidv4 } from 'uuid';
+import {
+  ProcessingQueueStatus,
+  TransactionQueueStatus,
+} from '@/database/interfaces/types';
+
+// Define interface for executor to fix type error with queueTransaction
+interface IExecutor {
+  queueTransaction: (
+    depositId: bigint,
+    profitability: ProfitabilityCheck,
+  ) => Promise<{ id: string; status: string; depositId?: bigint }>;
+  getStatus: () => Promise<unknown>;
+  getQueueStats: () => Promise<unknown>;
+  getTransaction: (id: string) => Promise<unknown>;
+}
 
 /**
  * Helper function to serialize BigInt values in an object for JSON.stringify
  * Converts all BigInt values to strings with their type for deserialization
  */
-function serializeBigInts(obj: any): any {
+function serializeBigInts(obj: unknown): unknown {
   if (obj === null || obj === undefined) {
     return obj;
   }
@@ -30,41 +43,13 @@ function serializeBigInts(obj: any): any {
   }
 
   if (Array.isArray(obj)) {
-    return obj.map(item => serializeBigInts(item));
+    return obj.map((item) => serializeBigInts(item));
   }
 
   if (typeof obj === 'object') {
-    const result: Record<string, any> = {};
-    for (const key in obj) {
-      result[key] = serializeBigInts(obj[key]);
-    }
-    return result;
-  }
-
-  return obj;
-}
-
-/**
- * Helper function to deserialize BigInt values from a serialized object
- * Converts all serialized BigInt objects back to actual BigInt values
- */
-function deserializeBigInts(obj: any): any {
-  if (obj === null || obj === undefined) {
-    return obj;
-  }
-
-  if (typeof obj === 'object' && !Array.isArray(obj) && obj.type === 'bigint' && 'value' in obj) {
-    return BigInt(obj.value);
-  }
-
-  if (Array.isArray(obj)) {
-    return obj.map(item => deserializeBigInts(item));
-  }
-
-  if (typeof obj === 'object') {
-    const result: Record<string, any> = {};
-    for (const key in obj) {
-      result[key] = deserializeBigInts(obj[key]);
+    const result: Record<string, unknown> = {};
+    for (const key in obj as Record<string, unknown>) {
+      result[key] = serializeBigInts((obj as Record<string, unknown>)[key]);
     }
     return result;
   }
@@ -81,7 +66,7 @@ export class ProfitabilityEngineWrapper implements IProfitabilityEngine {
   private processingQueue: Set<string> = new Set(); // Global processing queue (string depositId)
   private queueProcessorInterval: NodeJS.Timeout | null = null;
   private calculator: BinaryEligibilityOracleEarningPowerCalculator;
-  private executor: any; // Will be set later via setExecutor method
+  private executor: IExecutor | null = null; // Will be set later via setExecutor method
   private provider: ethers.Provider;
   private stakerAddress: string;
   private config: ProfitabilityConfig;
@@ -180,7 +165,7 @@ export class ProfitabilityEngineWrapper implements IProfitabilityEngine {
   /**
    * Set the executor instance to be used for queueing transactions
    */
-  setExecutor(executor: any): void {
+  setExecutor(executor: IExecutor): void {
     this.executor = executor;
     this.logger.info('Executor set for profitability engine');
   }
@@ -224,8 +209,12 @@ export class ProfitabilityEngineWrapper implements IProfitabilityEngine {
   private async requeuePendingItems(): Promise<void> {
     try {
       // Get all pending or processing items that might have been interrupted
-      const pendingItems = await this.db.getProcessingQueueItemsByStatus(ProcessingQueueStatus.PENDING);
-      const processingItems = await this.db.getProcessingQueueItemsByStatus(ProcessingQueueStatus.PROCESSING);
+      const pendingItems = await this.db.getProcessingQueueItemsByStatus(
+        ProcessingQueueStatus.PENDING,
+      );
+      const processingItems = await this.db.getProcessingQueueItemsByStatus(
+        ProcessingQueueStatus.PROCESSING,
+      );
 
       const allItems = [...pendingItems, ...processingItems];
 
@@ -234,7 +223,9 @@ export class ProfitabilityEngineWrapper implements IProfitabilityEngine {
         return;
       }
 
-      this.logger.info(`Requeuing ${allItems.length} pending items from previous runs`);
+      this.logger.info(
+        `Requeuing ${allItems.length} pending items from previous runs`,
+      );
 
       // Requeue each item
       for (const item of allItems) {
@@ -266,7 +257,7 @@ export class ProfitabilityEngineWrapper implements IProfitabilityEngine {
     if (this.queueProcessorInterval) return;
 
     this.queueProcessorInterval = setInterval(() => {
-      this.processQueue().catch(error => {
+      this.processQueue().catch((error) => {
         this.logger.error('Error in queue processor', { error });
       });
     }, 30000); // Process queue every 30 seconds
@@ -294,7 +285,7 @@ export class ProfitabilityEngineWrapper implements IProfitabilityEngine {
         delegatee,
         newScore: newScore.toString(),
         currentQueueSize: this.processingQueue.size,
-        delegateeQueueSize: this.delegateeQueue.size
+        delegateeQueueSize: this.delegateeQueue.size,
       });
 
       // Get all deposits for this delegatee
@@ -308,7 +299,7 @@ export class ProfitabilityEngineWrapper implements IProfitabilityEngine {
       this.logger.info('Found deposits for delegatee', {
         delegatee,
         depositCount: deposits.length,
-        depositIds: deposits.map(d => d.deposit_id).join(', ')
+        depositIds: deposits.map((d) => d.deposit_id).join(', '),
       });
 
       // Initialize set if not exists
@@ -319,9 +310,19 @@ export class ProfitabilityEngineWrapper implements IProfitabilityEngine {
       // Add deposits to database processing queue and in-memory queues
       for (const deposit of deposits) {
         // Check if already in queue
-        const existing = await this.db.getProcessingQueueItemByDepositId(deposit.deposit_id);
-        if (existing && [ProcessingQueueStatus.PENDING, ProcessingQueueStatus.PROCESSING].includes(existing.status as ProcessingQueueStatus)) {
-          this.logger.debug(`Deposit ${deposit.deposit_id} already in queue with status ${existing.status}`);
+        const existing = await this.db.getProcessingQueueItemByDepositId(
+          deposit.deposit_id,
+        );
+        if (
+          existing &&
+          [
+            ProcessingQueueStatus.PENDING,
+            ProcessingQueueStatus.PROCESSING,
+          ].includes(existing.status as ProcessingQueueStatus)
+        ) {
+          this.logger.debug(
+            `Deposit ${deposit.deposit_id} already in queue with status ${existing.status}`,
+          );
           continue;
         }
 
@@ -336,20 +337,26 @@ export class ProfitabilityEngineWrapper implements IProfitabilityEngine {
         this.delegateeQueue.get(delegatee)?.add(deposit.deposit_id);
         this.processingQueue.add(deposit.deposit_id);
 
-        this.logger.debug(`Added deposit ${deposit.deposit_id} to processing queue`);
+        this.logger.debug(
+          `Added deposit ${deposit.deposit_id} to processing queue`,
+        );
       }
 
       this.logger.info('Deposits queued for processing', {
         delegatee,
         depositCount: deposits.length,
         queueSize: this.processingQueue.size,
-        depositIds: Array.from(this.delegateeQueue.get(delegatee) || []).join(', ')
+        depositIds: Array.from(this.delegateeQueue.get(delegatee) || []).join(
+          ', ',
+        ),
       });
 
       // Process queue immediately if size is small
       if (this.processingQueue.size <= 10) {
-        this.processQueue().catch(error => {
-          this.logger.error('Error processing queue after score event', { error });
+        this.processQueue().catch((error) => {
+          this.logger.error('Error processing queue after score event', {
+            error,
+          });
         });
       }
     } catch (error) {
@@ -374,7 +381,7 @@ export class ProfitabilityEngineWrapper implements IProfitabilityEngine {
     const queueCopy = Array.from(this.processingQueue);
     this.logger.info('Processing profitability queue', {
       queueSize: queueCopy.length,
-      queueItems: queueCopy.join(', ')
+      queueItems: queueCopy.join(', '),
     });
 
     // Process in batches of 10 to avoid overloading
@@ -387,7 +394,7 @@ export class ProfitabilityEngineWrapper implements IProfitabilityEngine {
       const batch = queueCopy.slice(batchStart, batchEnd);
 
       this.logger.debug(`Processing batch ${i + 1}/${batches}`, {
-        batchSize: batch.length
+        batchSize: batch.length,
       });
 
       const deposits: Deposit[] = [];
@@ -397,7 +404,8 @@ export class ProfitabilityEngineWrapper implements IProfitabilityEngine {
       for (const depositId of batch) {
         try {
           // Find the queue item
-          const queueItem = await this.db.getProcessingQueueItemByDepositId(depositId);
+          const queueItem =
+            await this.db.getProcessingQueueItemByDepositId(depositId);
           if (!queueItem) {
             this.logger.warn('Queue item not found for deposit', { depositId });
             this.processingQueue.delete(depositId);
@@ -440,7 +448,7 @@ export class ProfitabilityEngineWrapper implements IProfitabilityEngine {
         } catch (error) {
           this.logger.error('Error preparing deposit for processing', {
             depositId,
-            error
+            error,
           });
 
           // Remove from processing queue to avoid endless loop
@@ -463,14 +471,19 @@ export class ProfitabilityEngineWrapper implements IProfitabilityEngine {
           const queueItemId = queueItems.get(depositId);
 
           if (!queueItemId) {
-            this.logger.warn('Queue item ID not found for deposit result', { depositId });
+            this.logger.warn('Queue item ID not found for deposit result', {
+              depositId,
+            });
             continue;
           }
 
           // Remove from queues regardless of profitability to avoid reprocessing
           this.processingQueue.delete(depositId);
 
-          for (const [delegatee, depositsSet] of this.delegateeQueue.entries()) {
+          for (const [
+            delegatee,
+            depositsSet,
+          ] of this.delegateeQueue.entries()) {
             if (depositsSet.has(depositId)) {
               depositsSet.delete(depositId);
               if (depositsSet.size === 0) {
@@ -482,7 +495,9 @@ export class ProfitabilityEngineWrapper implements IProfitabilityEngine {
 
           // Save profitability check result
           await this.db.updateProcessingQueueItem(queueItemId, {
-            last_profitability_check: JSON.stringify(serializeBigInts(result.profitability)),
+            last_profitability_check: JSON.stringify(
+              serializeBigInts(result.profitability),
+            ),
           });
 
           if (result.profitability.canBump) {
@@ -497,11 +512,14 @@ export class ProfitabilityEngineWrapper implements IProfitabilityEngine {
               await this.db.createTransactionQueueItem({
                 deposit_id: depositId,
                 status: TransactionQueueStatus.PENDING,
-                tx_data: JSON.stringify(serializeBigInts({
-                  depositId: result.depositId.toString(),
-                  profitability: result.profitability,
-                })),
-                tip_amount: result.profitability.estimates.optimalTip.toString(),
+                tx_data: JSON.stringify(
+                  serializeBigInts({
+                    depositId: result.depositId.toString(),
+                    profitability: result.profitability,
+                  }),
+                ),
+                tip_amount:
+                  result.profitability.estimates.optimalTip.toString(),
                 tip_receiver: result.profitability.estimates.tipReceiver,
               });
 
@@ -523,7 +541,7 @@ export class ProfitabilityEngineWrapper implements IProfitabilityEngine {
             } catch (error) {
               this.logger.error('Error queueing transaction', {
                 depositId,
-                error
+                error,
               });
 
               // Mark as failed
@@ -539,37 +557,53 @@ export class ProfitabilityEngineWrapper implements IProfitabilityEngine {
             if (isProfitable) {
               // Update the profitability check but keep as pending for future checks
               await this.db.updateProcessingQueueItem(queueItemId, {
-                last_profitability_check: JSON.stringify(serializeBigInts(result.profitability)),
-                status: ProcessingQueueStatus.PENDING
+                last_profitability_check: JSON.stringify(
+                  serializeBigInts(result.profitability),
+                ),
+                status: ProcessingQueueStatus.PENDING,
               });
 
               // Add back to the processing queue with a small delay (will be picked up in next run)
-              setTimeout(() => {
-                if (this.isRunning) {
-                  this.processingQueue.add(depositId);
+              setTimeout(
+                () => {
+                  if (this.isRunning) {
+                    this.processingQueue.add(depositId);
 
-                  // Also add back to delegatee queue
-                  const depositInfo = this.db.getDeposit(depositId).then(deposit => {
-                    if (!deposit) return;
+                    // Also add back to delegatee queue
+                    if (this.isRunning) {
+                      this.db
+                        .getDeposit(depositId)
+                        .then((deposit) => {
+                          if (!deposit) return;
 
-                    const delegatee = deposit.delegatee_address;
-                    if (delegatee) {
-                      if (!this.delegateeQueue.has(delegatee)) {
-                        this.delegateeQueue.set(delegatee, new Set());
-                      }
-                      this.delegateeQueue.get(delegatee)?.add(depositId);
+                          const delegatee = deposit.delegatee_address;
+                          if (delegatee) {
+                            if (!this.delegateeQueue.has(delegatee)) {
+                              this.delegateeQueue.set(delegatee, new Set());
+                            }
+                            this.delegateeQueue.get(delegatee)?.add(depositId);
+                          }
+                        })
+                        .catch((error) => {
+                          this.logger.error(
+                            'Error getting deposit info for requeue',
+                            { depositId, error },
+                          );
+                        });
                     }
-                  }).catch(error => {
-                    this.logger.error('Error getting deposit info for requeue', { depositId, error });
-                  });
 
-                  this.logger.debug('Deposit is profitable but not yet eligible/enough rewards, kept as pending', {
-                    depositId,
-                    canBump: result.profitability.canBump,
-                    constraints: result.profitability.constraints
-                  });
-                }
-              }, 5 * 60 * 1000); // Check again in 5 minutes
+                    this.logger.debug(
+                      'Deposit is profitable but not yet eligible/enough rewards, kept as pending',
+                      {
+                        depositId,
+                        canBump: result.profitability.canBump,
+                        constraints: result.profitability.constraints,
+                      },
+                    );
+                  }
+                },
+                5 * 60 * 1000,
+              ); // Check again in 5 minutes
 
               // Remove from current processing queue but will be added back by the timeout
               this.processingQueue.delete(depositId);
@@ -577,19 +611,24 @@ export class ProfitabilityEngineWrapper implements IProfitabilityEngine {
               // Not profitable, mark as completed
               await this.db.updateProcessingQueueItem(queueItemId, {
                 status: ProcessingQueueStatus.COMPLETED,
-                last_profitability_check: JSON.stringify(serializeBigInts(result.profitability))
+                last_profitability_check: JSON.stringify(
+                  serializeBigInts(result.profitability),
+                ),
               });
 
               this.logger.debug('Deposit not profitable, marked as completed', {
                 depositId,
                 canBump: result.profitability.canBump,
-                constraints: result.profitability.constraints
+                constraints: result.profitability.constraints,
               });
             }
           }
         }
       } catch (error) {
-        this.logger.error('Error processing batch', { error, batchSize: deposits.length });
+        this.logger.error('Error processing batch', {
+          error,
+          batchSize: deposits.length,
+        });
 
         // Mark all items in the batch as failed
         for (const [depositId, queueItemId] of queueItems.entries()) {
@@ -605,7 +644,7 @@ export class ProfitabilityEngineWrapper implements IProfitabilityEngine {
     }
 
     this.logger.info('Queue processing completed', {
-      remainingItems: this.processingQueue.size
+      remainingItems: this.processingQueue.size,
     });
   }
 
@@ -647,10 +686,18 @@ export class ProfitabilityEngineWrapper implements IProfitabilityEngine {
     }
 
     // Get counts from database
-    const pendingItems = await this.db.getProcessingQueueItemsByStatus(ProcessingQueueStatus.PENDING);
-    const processingItems = await this.db.getProcessingQueueItemsByStatus(ProcessingQueueStatus.PROCESSING);
-    const completedItems = await this.db.getProcessingQueueItemsByStatus(ProcessingQueueStatus.COMPLETED);
-    const failedItems = await this.db.getProcessingQueueItemsByStatus(ProcessingQueueStatus.FAILED);
+    const pendingItems = await this.db.getProcessingQueueItemsByStatus(
+      ProcessingQueueStatus.PENDING,
+    );
+    const processingItems = await this.db.getProcessingQueueItemsByStatus(
+      ProcessingQueueStatus.PROCESSING,
+    );
+    const completedItems = await this.db.getProcessingQueueItemsByStatus(
+      ProcessingQueueStatus.COMPLETED,
+    );
+    const failedItems = await this.db.getProcessingQueueItemsByStatus(
+      ProcessingQueueStatus.FAILED,
+    );
 
     return {
       totalDelegatees: this.delegateeQueue.size,

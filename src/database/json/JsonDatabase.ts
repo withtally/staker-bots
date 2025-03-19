@@ -8,7 +8,7 @@ import {
   ProcessingQueueItem,
   TransactionQueueItem,
   ProcessingQueueStatus,
-  TransactionQueueStatus
+  TransactionQueueStatus,
 } from '../interfaces/types';
 import { ConsoleLogger, Logger } from '@/monitor/logging';
 import { v4 as uuidv4 } from 'uuid';
@@ -245,7 +245,10 @@ export class JsonDatabase implements IDatabase {
 
   // Processing Queue methods
   async createProcessingQueueItem(
-    item: Omit<ProcessingQueueItem, 'id' | 'created_at' | 'updated_at' | 'attempts'>
+    item: Omit<
+      ProcessingQueueItem,
+      'id' | 'created_at' | 'updated_at' | 'attempts'
+    >,
   ): Promise<ProcessingQueueItem> {
     const now = new Date().toISOString();
     const id = uuidv4();
@@ -266,7 +269,9 @@ export class JsonDatabase implements IDatabase {
 
   async updateProcessingQueueItem(
     id: string,
-    update: Partial<Omit<ProcessingQueueItem, 'id' | 'created_at' | 'updated_at'>>
+    update: Partial<
+      Omit<ProcessingQueueItem, 'id' | 'created_at' | 'updated_at'>
+    >,
   ): Promise<void> {
     const item = this.data.processing_queue[id];
 
@@ -283,27 +288,34 @@ export class JsonDatabase implements IDatabase {
     await this.saveToFile();
   }
 
-  async getProcessingQueueItem(id: string): Promise<ProcessingQueueItem | null> {
-    return id in this.data.processing_queue ? this.data.processing_queue[id]! : null;
+  async getProcessingQueueItem(
+    id: string,
+  ): Promise<ProcessingQueueItem | null> {
+    return id in this.data.processing_queue
+      ? this.data.processing_queue[id]!
+      : null;
   }
 
   async getProcessingQueueItemsByStatus(
-    status: ProcessingQueueStatus
+    status: ProcessingQueueStatus,
   ): Promise<ProcessingQueueItem[]> {
-    return Object.values(this.data.processing_queue)
-      .filter(item => item.status === status);
+    return Object.values(this.data.processing_queue).filter(
+      (item) => item.status === status,
+    );
   }
 
   async getProcessingQueueItemByDepositId(
-    depositId: string
+    depositId: string,
   ): Promise<ProcessingQueueItem | null> {
-    const items = Object.values(this.data.processing_queue)
-      .filter(item => item.deposit_id === depositId);
+    const items = Object.values(this.data.processing_queue).filter(
+      (item) => item.deposit_id === depositId,
+    );
 
     // Return the most recently updated item if multiple exist
     if (items.length > 0) {
-      return items.sort((a, b) =>
-        new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+      return items.sort(
+        (a, b) =>
+          new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
       )[0]!;
     }
 
@@ -311,10 +323,11 @@ export class JsonDatabase implements IDatabase {
   }
 
   async getProcessingQueueItemsByDelegatee(
-    delegatee: string
+    delegatee: string,
   ): Promise<ProcessingQueueItem[]> {
-    return Object.values(this.data.processing_queue)
-      .filter(item => item.delegatee === delegatee);
+    return Object.values(this.data.processing_queue).filter(
+      (item) => item.delegatee === delegatee,
+    );
   }
 
   async deleteProcessingQueueItem(id: string): Promise<void> {
@@ -326,7 +339,10 @@ export class JsonDatabase implements IDatabase {
 
   // Transaction Queue methods
   async createTransactionQueueItem(
-    item: Omit<TransactionQueueItem, 'id' | 'created_at' | 'updated_at' | 'attempts'>
+    item: Omit<
+      TransactionQueueItem,
+      'id' | 'created_at' | 'updated_at' | 'attempts'
+    >,
   ): Promise<TransactionQueueItem> {
     const now = new Date().toISOString();
     const id = uuidv4();
@@ -347,7 +363,9 @@ export class JsonDatabase implements IDatabase {
 
   async updateTransactionQueueItem(
     id: string,
-    update: Partial<Omit<TransactionQueueItem, 'id' | 'created_at' | 'updated_at'>>
+    update: Partial<
+      Omit<TransactionQueueItem, 'id' | 'created_at' | 'updated_at'>
+    >,
   ): Promise<void> {
     const item = this.data.transaction_queue[id];
 
@@ -364,27 +382,34 @@ export class JsonDatabase implements IDatabase {
     await this.saveToFile();
   }
 
-  async getTransactionQueueItem(id: string): Promise<TransactionQueueItem | null> {
-    return id in this.data.transaction_queue ? this.data.transaction_queue[id]! : null;
+  async getTransactionQueueItem(
+    id: string,
+  ): Promise<TransactionQueueItem | null> {
+    return id in this.data.transaction_queue
+      ? this.data.transaction_queue[id]!
+      : null;
   }
 
   async getTransactionQueueItemsByStatus(
-    status: TransactionQueueStatus
+    status: TransactionQueueStatus,
   ): Promise<TransactionQueueItem[]> {
-    return Object.values(this.data.transaction_queue)
-      .filter(item => item.status === status);
+    return Object.values(this.data.transaction_queue).filter(
+      (item) => item.status === status,
+    );
   }
 
   async getTransactionQueueItemByDepositId(
-    depositId: string
+    depositId: string,
   ): Promise<TransactionQueueItem | null> {
-    const items = Object.values(this.data.transaction_queue)
-      .filter(item => item.deposit_id === depositId);
+    const items = Object.values(this.data.transaction_queue).filter(
+      (item) => item.deposit_id === depositId,
+    );
 
     // Return the most recently updated item if multiple exist
     if (items.length > 0) {
-      return items.sort((a, b) =>
-        new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+      return items.sort(
+        (a, b) =>
+          new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
       )[0]!;
     }
 
@@ -392,10 +417,11 @@ export class JsonDatabase implements IDatabase {
   }
 
   async getTransactionQueueItemsByHash(
-    hash: string
+    hash: string,
   ): Promise<TransactionQueueItem[]> {
-    return Object.values(this.data.transaction_queue)
-      .filter(item => item.hash === hash);
+    return Object.values(this.data.transaction_queue).filter(
+      (item) => item.hash === hash,
+    );
   }
 
   async deleteTransactionQueueItem(id: string): Promise<void> {

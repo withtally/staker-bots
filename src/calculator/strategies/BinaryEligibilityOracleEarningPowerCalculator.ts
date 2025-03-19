@@ -41,7 +41,9 @@ export class BinaryEligibilityOracleEarningPowerCalculator
    */
   setProfitabilityEngine(engine: ProfitabilityEngineWrapper): void {
     this.profitabilityEngine = engine;
-    this.logger.info('Profitability engine registered for score event notifications');
+    this.logger.info(
+      'Profitability engine registered for score event notifications',
+    );
   }
 
   async getEarningPower(
@@ -134,7 +136,7 @@ export class BinaryEligibilityOracleEarningPowerCalculator
         fromBlock,
         toBlock,
         contractAddress: CONFIG.monitor.rewardCalculatorAddress,
-        hasProfitabilityEngine: this.profitabilityEngine !== null
+        hasProfitabilityEngine: this.profitabilityEngine !== null,
       });
 
       // Process events in batch
@@ -202,23 +204,35 @@ export class BinaryEligibilityOracleEarningPowerCalculator
             blockNumber: event.block_number,
           });
 
-          await this.profitabilityEngine.onScoreEvent(event.delegatee, event.score);
+          await this.profitabilityEngine.onScoreEvent(
+            event.delegatee,
+            event.score,
+          );
 
-          this.logger.info('Successfully forwarded score event to profitability engine', {
-            delegatee: event.delegatee,
-          });
+          this.logger.info(
+            'Successfully forwarded score event to profitability engine',
+            {
+              delegatee: event.delegatee,
+            },
+          );
         } catch (error) {
-          this.logger.error('Error notifying profitability engine of score event:', {
-            error,
-            event,
-          });
+          this.logger.error(
+            'Error notifying profitability engine of score event:',
+            {
+              error,
+              event,
+            },
+          );
           // Continue processing even if notification fails
         }
       } else {
-        this.logger.warn('No profitability engine set, score event not forwarded', {
-          delegatee: event.delegatee,
-          score: event.score.toString(),
-        });
+        this.logger.warn(
+          'No profitability engine set, score event not forwarded',
+          {
+            delegatee: event.delegatee,
+            score: event.score.toString(),
+          },
+        );
       }
 
       this.logger.debug('Score event processed', {

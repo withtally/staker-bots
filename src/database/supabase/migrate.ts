@@ -30,15 +30,19 @@ async function runMigrations() {
         // Split SQL by semicolons to execute each statement separately
         const statements = sql
           .split(';')
-          .map(s => s.trim())
-          .filter(s => s.length > 0);
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0);
 
         for (const statement of statements) {
-          logger.debug(`Executing SQL statement: ${statement.substring(0, 100)}...`);
+          logger.debug(
+            `Executing SQL statement: ${statement.substring(0, 100)}...`,
+          );
           const { error } = await supabase.rpc('exec_sql', { sql: statement });
 
           if (error) {
-            logger.error(`Error executing statement in ${filename}:`, { error });
+            logger.error(`Error executing statement in ${filename}:`, {
+              error,
+            });
             // Continue with other statements instead of failing completely
           }
         }

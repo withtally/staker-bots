@@ -1,12 +1,18 @@
 import { supabase } from './client';
-import { ProcessingQueueItem, ProcessingQueueStatus } from '../interfaces/types';
+import {
+  ProcessingQueueItem,
+  ProcessingQueueStatus,
+} from '../interfaces/types';
 
 export async function createProcessingQueueItem(
-  item: Omit<ProcessingQueueItem, 'id' | 'created_at' | 'updated_at' | 'attempts'>
+  item: Omit<
+    ProcessingQueueItem,
+    'id' | 'created_at' | 'updated_at' | 'attempts'
+  >,
 ): Promise<ProcessingQueueItem> {
   const newItem = {
     ...item,
-    attempts: 0
+    attempts: 0,
   };
 
   const { data, error } = await supabase
@@ -21,7 +27,9 @@ export async function createProcessingQueueItem(
 
 export async function updateProcessingQueueItem(
   id: string,
-  update: Partial<Omit<ProcessingQueueItem, 'id' | 'created_at' | 'updated_at'>>
+  update: Partial<
+    Omit<ProcessingQueueItem, 'id' | 'created_at' | 'updated_at'>
+  >,
 ): Promise<void> {
   const { error } = await supabase
     .from('processing_queue')
@@ -32,7 +40,7 @@ export async function updateProcessingQueueItem(
 }
 
 export async function getProcessingQueueItem(
-  id: string
+  id: string,
 ): Promise<ProcessingQueueItem | null> {
   const { data, error } = await supabase
     .from('processing_queue')
@@ -49,7 +57,7 @@ export async function getProcessingQueueItem(
 }
 
 export async function getProcessingQueueItemsByStatus(
-  status: ProcessingQueueStatus
+  status: ProcessingQueueStatus,
 ): Promise<ProcessingQueueItem[]> {
   const { data, error } = await supabase
     .from('processing_queue')
@@ -61,7 +69,7 @@ export async function getProcessingQueueItemsByStatus(
 }
 
 export async function getProcessingQueueItemByDepositId(
-  depositId: string
+  depositId: string,
 ): Promise<ProcessingQueueItem | null> {
   const { data, error } = await supabase
     .from('processing_queue')
@@ -80,7 +88,7 @@ export async function getProcessingQueueItemByDepositId(
 }
 
 export async function getProcessingQueueItemsByDelegatee(
-  delegatee: string
+  delegatee: string,
 ): Promise<ProcessingQueueItem[]> {
   const { data, error } = await supabase
     .from('processing_queue')
@@ -91,9 +99,7 @@ export async function getProcessingQueueItemsByDelegatee(
   return data || [];
 }
 
-export async function deleteProcessingQueueItem(
-  id: string
-): Promise<void> {
+export async function deleteProcessingQueueItem(id: string): Promise<void> {
   const { error } = await supabase
     .from('processing_queue')
     .delete()

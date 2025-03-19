@@ -29,8 +29,21 @@ interface DatabaseDeposit {
 
 interface DatabaseContent {
   deposits: Record<string, DatabaseDeposit>;
-  score_events?: Record<string, Record<number, any>>;
-  checkpoints?: Record<string, any>;
+  score_events?: Record<string, Record<number, ScoreEvent>>;
+  checkpoints?: Record<string, CheckpointData>;
+}
+
+// Define types for score events and checkpoints
+interface ScoreEvent {
+  score: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+interface CheckpointData {
+  last_block_number: number;
+  block_hash: string;
+  last_update: string;
 }
 
 // Create logger instance
@@ -63,8 +76,12 @@ async function main() {
   let dbContent: DatabaseContent;
   try {
     logger.info('Loading staker-monitor database from file...');
-    dbContent = JSON.parse(fs.readFileSync('./staker-monitor-db.json', 'utf-8')) as DatabaseContent;
-    logger.info(`Found ${Object.keys(dbContent.deposits).length} deposits in file`);
+    dbContent = JSON.parse(
+      fs.readFileSync('./staker-monitor-db.json', 'utf-8'),
+    ) as DatabaseContent;
+    logger.info(
+      `Found ${Object.keys(dbContent.deposits).length} deposits in file`,
+    );
 
     // Import deposits into our test database
     for (const deposit of Object.values(dbContent.deposits)) {
@@ -88,15 +105,19 @@ async function main() {
       const delegateeScores = new Map<string, bigint>();
 
       // For each delegatee, import ALL score events across blocks
-      for (const [delegatee, blockEvents] of Object.entries(dbContent.score_events)) {
+      for (const [delegatee, blockEvents] of Object.entries(
+        dbContent.score_events,
+      )) {
         try {
           // Get all block numbers and sort them chronologically (oldest first)
           const blockNumbers = Object.keys(blockEvents)
             .map(Number)
-            .filter(num => !isNaN(num))
+            .filter((num) => !isNaN(num))
             .sort((a, b) => a - b); // Sort ascending to preserve chronological order
 
-          logger.info(`Processing ${blockNumbers.length} score events for delegatee ${delegatee}`);
+          logger.info(
+            `Processing ${blockNumbers.length} score events for delegatee ${delegatee}`,
+          );
 
           // Import all score events for this delegatee
           for (const blockNumber of blockNumbers) {
@@ -117,23 +138,33 @@ async function main() {
               });
 
               scoreEventCount++;
-              logger.debug(`Imported score event for delegatee ${delegatee} at block ${blockNumber}:`, {
-                score: scoreEvent.score,
-              });
+              logger.debug(
+                `Imported score event for delegatee ${delegatee} at block ${blockNumber}:`,
+                {
+                  score: scoreEvent.score,
+                },
+              );
             }
           }
 
           // Log the latest score for this delegatee
           const latestScore = delegateeScores.get(delegatee);
           if (latestScore !== undefined) {
-            logger.info(`Latest score for delegatee ${delegatee}: ${latestScore.toString()}`);
+            logger.info(
+              `Latest score for delegatee ${delegatee}: ${latestScore.toString()}`,
+            );
           }
         } catch (error) {
-          logger.error(`Error importing score events for delegatee ${delegatee}:`, { error });
+          logger.error(
+            `Error importing score events for delegatee ${delegatee}:`,
+            { error },
+          );
         }
       }
 
-      logger.info(`Imported ${scoreEventCount} score events for ${delegateeScores.size} delegatees`);
+      logger.info(
+        `Imported ${scoreEventCount} score events for ${delegateeScores.size} delegatees`,
+      );
     } else {
       logger.warn('No score events found in database file');
     }
@@ -149,7 +180,10 @@ async function main() {
       });
     }
   } catch (error) {
-    logger.warn('Could not load external database file, will use empty database:', { error });
+    logger.warn(
+      'Could not load external database file, will use empty database:',
+      { error },
+    );
     dbContent = { deposits: {} };
   }
 
@@ -228,18 +262,18 @@ async function main() {
 
         // Use the calculator's method to get the score (internally uses the cache)
         // We need to call a method that will use the delegatee score
-        const depositId = BigInt(1); // Dummy value
-        const owner = "0x0000000000000000000000000000000000000000"; // Dummy value
         const amount = BigInt(1000000); // Dummy value
+        const owner = '0x0000000000000000000000000000000000000000'; // Dummy value
         const oldEarningPower = BigInt(0); // Dummy value
 
         // This method internally uses delegatee scores
-        const [newEarningPower, isEligible] = await calculator.getNewEarningPower(
-          amount,
-          owner,
-          delegatee,
-          oldEarningPower
-        );
+        const [newEarningPower, isEligible] =
+          await calculator.getNewEarningPower(
+            amount,
+            owner,
+            delegatee,
+            oldEarningPower,
+          );
 
         // Log the result for debugging
         logger.info(`Validated score for delegatee ${delegatee}:`, {
@@ -247,8 +281,8 @@ async function main() {
           blockNumber: scoreEvent.block_number,
           earningPowerResult: {
             newEarningPower: newEarningPower.toString(),
-            isEligible
-          }
+            isEligible,
+          },
         });
 
         validatedScores++;
@@ -259,7 +293,9 @@ async function main() {
         logger.warn(`No score found for delegatee ${delegatee}`);
       }
     } catch (error) {
-      logger.error(`Error checking score for delegatee ${delegatee}:`, { error });
+      logger.error(`Error checking score for delegatee ${delegatee}:`, {
+        error,
+      });
       scoreDiscrepancies++;
     }
   }
@@ -267,7 +303,7 @@ async function main() {
   logger.info(`Score validation summary:`, {
     totalDelegatees: delegatees.size,
     validatedScores,
-    scoreDiscrepancies
+    scoreDiscrepancies,
   });
 
   // Configure profitability engine
@@ -321,7 +357,7 @@ async function main() {
     provider,
     stakerAddress!,
     logger,
-    config
+    config,
   );
 
   // Start the profitability engine wrapper
@@ -381,28 +417,33 @@ async function main() {
 
         // Use actual profitability engine instead of mocks
         const profitability =
-          await directProfitabilityEngine.checkProfitability(profitabilityDeposit);
+          await directProfitabilityEngine.checkProfitability(
+            profitabilityDeposit,
+          );
 
         // Let's log detailed information about each deposit using database values
         try {
-          const depositId = BigInt(deposit.deposit_id);
-
           // Get the delegatee's score from our database
-          let delegateeScore = "0";
+          let delegateeScore = '0';
           if (deposit.delegatee_address) {
-            const latestScoreEvent = await database.getLatestScoreEvent(deposit.delegatee_address);
+            const latestScoreEvent = await database.getLatestScoreEvent(
+              deposit.delegatee_address,
+            );
             if (latestScoreEvent) {
               delegateeScore = latestScoreEvent.score;
             }
           }
 
-          logger.info(`Detailed deposit ${deposit.deposit_id} information from database:`, {
-            depositId: deposit.deposit_id,
-            owner: deposit.owner_address,
-            delegatee: deposit.delegatee_address,
-            amount: deposit.amount,
-            delegateeScore,
-          });
+          logger.info(
+            `Detailed deposit ${deposit.deposit_id} information from database:`,
+            {
+              depositId: deposit.deposit_id,
+              owner: deposit.owner_address,
+              delegatee: deposit.delegatee_address,
+              amount: deposit.amount,
+              delegateeScore,
+            },
+          );
 
           // FORCE ONE DEPOSIT TO BE ELIGIBLE
           // For deposit #15 which has reasonable unclaimed rewards, manually make it eligible
@@ -461,11 +502,15 @@ async function main() {
             );
           } else {
             // Log the reason it's not eligible
-            logger.info(`Deposit ${deposit.deposit_id} is NOT eligible for bumping:`, {
-              calculatorEligible: profitability.constraints.calculatorEligible,
-              hasEnoughRewards: profitability.constraints.hasEnoughRewards,
-              isProfitable: profitability.constraints.isProfitable,
-            });
+            logger.info(
+              `Deposit ${deposit.deposit_id} is NOT eligible for bumping:`,
+              {
+                calculatorEligible:
+                  profitability.constraints.calculatorEligible,
+                hasEnoughRewards: profitability.constraints.hasEnoughRewards,
+                isProfitable: profitability.constraints.isProfitable,
+              },
+            );
           }
         } catch (error) {
           logger.warn(
@@ -570,15 +615,18 @@ async function main() {
         await profitabilityEngine.onScoreEvent(delegatee, BigInt(100));
         logger.info(`Score event processed for delegatee ${delegatee}`);
       } catch (error) {
-        logger.error(`Error processing score event for delegatee ${delegatee}:`, {
-          error,
-        });
+        logger.error(
+          `Error processing score event for delegatee ${delegatee}:`,
+          {
+            error,
+          },
+        );
       }
     }
 
     // Wait for queue processing to complete
     logger.info('Waiting for queue processing...');
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    await new Promise((resolve) => setTimeout(resolve, 5000));
 
     // Check queue stats
     const queueStats = await profitabilityEngine.getQueueStats();
@@ -722,7 +770,6 @@ async function main() {
 
     await directProfitabilityEngine.stop();
     logger.info('Direct profitability engine stopped');
-
   } catch (error) {
     logger.error('Error during test:', {
       error: error instanceof Error ? error.message : String(error),

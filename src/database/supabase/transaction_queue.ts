@@ -1,12 +1,18 @@
 import { supabase } from './client';
-import { TransactionQueueItem, TransactionQueueStatus } from '../interfaces/types';
+import {
+  TransactionQueueItem,
+  TransactionQueueStatus,
+} from '../interfaces/types';
 
 export async function createTransactionQueueItem(
-  item: Omit<TransactionQueueItem, 'id' | 'created_at' | 'updated_at' | 'attempts'>
+  item: Omit<
+    TransactionQueueItem,
+    'id' | 'created_at' | 'updated_at' | 'attempts'
+  >,
 ): Promise<TransactionQueueItem> {
   const newItem = {
     ...item,
-    attempts: 0
+    attempts: 0,
   };
 
   const { data, error } = await supabase
@@ -21,7 +27,9 @@ export async function createTransactionQueueItem(
 
 export async function updateTransactionQueueItem(
   id: string,
-  update: Partial<Omit<TransactionQueueItem, 'id' | 'created_at' | 'updated_at'>>
+  update: Partial<
+    Omit<TransactionQueueItem, 'id' | 'created_at' | 'updated_at'>
+  >,
 ): Promise<void> {
   const { error } = await supabase
     .from('transaction_queue')
@@ -32,7 +40,7 @@ export async function updateTransactionQueueItem(
 }
 
 export async function getTransactionQueueItem(
-  id: string
+  id: string,
 ): Promise<TransactionQueueItem | null> {
   const { data, error } = await supabase
     .from('transaction_queue')
@@ -49,7 +57,7 @@ export async function getTransactionQueueItem(
 }
 
 export async function getTransactionQueueItemsByStatus(
-  status: TransactionQueueStatus
+  status: TransactionQueueStatus,
 ): Promise<TransactionQueueItem[]> {
   const { data, error } = await supabase
     .from('transaction_queue')
@@ -61,7 +69,7 @@ export async function getTransactionQueueItemsByStatus(
 }
 
 export async function getTransactionQueueItemByDepositId(
-  depositId: string
+  depositId: string,
 ): Promise<TransactionQueueItem | null> {
   const { data, error } = await supabase
     .from('transaction_queue')
@@ -80,7 +88,7 @@ export async function getTransactionQueueItemByDepositId(
 }
 
 export async function getTransactionQueueItemsByHash(
-  hash: string
+  hash: string,
 ): Promise<TransactionQueueItem[]> {
   const { data, error } = await supabase
     .from('transaction_queue')
@@ -91,9 +99,7 @@ export async function getTransactionQueueItemsByHash(
   return data || [];
 }
 
-export async function deleteTransactionQueueItem(
-  id: string
-): Promise<void> {
+export async function deleteTransactionQueueItem(id: string): Promise<void> {
   const { error } = await supabase
     .from('transaction_queue')
     .delete()

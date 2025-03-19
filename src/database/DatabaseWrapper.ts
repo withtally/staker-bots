@@ -6,7 +6,7 @@ import {
   ProcessingQueueItem,
   TransactionQueueItem,
   ProcessingQueueStatus,
-  TransactionQueueStatus
+  TransactionQueueStatus,
 } from './interfaces/types';
 import * as supabaseDb from './supabase/deposits';
 import * as supabaseCheckpoints from './supabase/checkpoints';
@@ -40,26 +40,41 @@ export class DatabaseWrapper implements IDatabase {
         deleteScoreEvent: supabaseScoreEvents.deleteScoreEvent,
         getScoreEvent: supabaseScoreEvents.getScoreEvent,
         getLatestScoreEvent: supabaseScoreEvents.getLatestScoreEvent,
-        getScoreEventsByBlockRange: supabaseScoreEvents.getScoreEventsByBlockRange,
-        deleteScoreEventsByBlockRange: supabaseScoreEvents.deleteScoreEventsByBlockRange,
+        getScoreEventsByBlockRange:
+          supabaseScoreEvents.getScoreEventsByBlockRange,
+        deleteScoreEventsByBlockRange:
+          supabaseScoreEvents.deleteScoreEventsByBlockRange,
 
         // Processing Queue Operations
-        createProcessingQueueItem: supabaseProcessingQueue.createProcessingQueueItem,
-        updateProcessingQueueItem: supabaseProcessingQueue.updateProcessingQueueItem,
+        createProcessingQueueItem:
+          supabaseProcessingQueue.createProcessingQueueItem,
+        updateProcessingQueueItem:
+          supabaseProcessingQueue.updateProcessingQueueItem,
         getProcessingQueueItem: supabaseProcessingQueue.getProcessingQueueItem,
-        getProcessingQueueItemsByStatus: supabaseProcessingQueue.getProcessingQueueItemsByStatus,
-        getProcessingQueueItemByDepositId: supabaseProcessingQueue.getProcessingQueueItemByDepositId,
-        getProcessingQueueItemsByDelegatee: supabaseProcessingQueue.getProcessingQueueItemsByDelegatee,
-        deleteProcessingQueueItem: supabaseProcessingQueue.deleteProcessingQueueItem,
+        getProcessingQueueItemsByStatus:
+          supabaseProcessingQueue.getProcessingQueueItemsByStatus,
+        getProcessingQueueItemByDepositId:
+          supabaseProcessingQueue.getProcessingQueueItemByDepositId,
+        getProcessingQueueItemsByDelegatee:
+          supabaseProcessingQueue.getProcessingQueueItemsByDelegatee,
+        deleteProcessingQueueItem:
+          supabaseProcessingQueue.deleteProcessingQueueItem,
 
         // Transaction Queue Operations
-        createTransactionQueueItem: supabaseTransactionQueue.createTransactionQueueItem,
-        updateTransactionQueueItem: supabaseTransactionQueue.updateTransactionQueueItem,
-        getTransactionQueueItem: supabaseTransactionQueue.getTransactionQueueItem,
-        getTransactionQueueItemsByStatus: supabaseTransactionQueue.getTransactionQueueItemsByStatus,
-        getTransactionQueueItemByDepositId: supabaseTransactionQueue.getTransactionQueueItemByDepositId,
-        getTransactionQueueItemsByHash: supabaseTransactionQueue.getTransactionQueueItemsByHash,
-        deleteTransactionQueueItem: supabaseTransactionQueue.deleteTransactionQueueItem,
+        createTransactionQueueItem:
+          supabaseTransactionQueue.createTransactionQueueItem,
+        updateTransactionQueueItem:
+          supabaseTransactionQueue.updateTransactionQueueItem,
+        getTransactionQueueItem:
+          supabaseTransactionQueue.getTransactionQueueItem,
+        getTransactionQueueItemsByStatus:
+          supabaseTransactionQueue.getTransactionQueueItemsByStatus,
+        getTransactionQueueItemByDepositId:
+          supabaseTransactionQueue.getTransactionQueueItemByDepositId,
+        getTransactionQueueItemsByHash:
+          supabaseTransactionQueue.getTransactionQueueItemsByHash,
+        deleteTransactionQueueItem:
+          supabaseTransactionQueue.deleteTransactionQueueItem,
       };
     }
   }
@@ -150,36 +165,43 @@ export class DatabaseWrapper implements IDatabase {
 
   // Processing Queue methods
   async createProcessingQueueItem(
-    item: Omit<ProcessingQueueItem, 'id' | 'created_at' | 'updated_at' | 'attempts'>
+    item: Omit<
+      ProcessingQueueItem,
+      'id' | 'created_at' | 'updated_at' | 'attempts'
+    >,
   ): Promise<ProcessingQueueItem> {
     return this.db.createProcessingQueueItem(item);
   }
 
   async updateProcessingQueueItem(
     id: string,
-    update: Partial<Omit<ProcessingQueueItem, 'id' | 'created_at' | 'updated_at'>>
+    update: Partial<
+      Omit<ProcessingQueueItem, 'id' | 'created_at' | 'updated_at'>
+    >,
   ): Promise<void> {
     return this.db.updateProcessingQueueItem(id, update);
   }
 
-  async getProcessingQueueItem(id: string): Promise<ProcessingQueueItem | null> {
+  async getProcessingQueueItem(
+    id: string,
+  ): Promise<ProcessingQueueItem | null> {
     return this.db.getProcessingQueueItem(id);
   }
 
   async getProcessingQueueItemsByStatus(
-    status: ProcessingQueueStatus
+    status: ProcessingQueueStatus,
   ): Promise<ProcessingQueueItem[]> {
     return this.db.getProcessingQueueItemsByStatus(status);
   }
 
   async getProcessingQueueItemByDepositId(
-    depositId: string
+    depositId: string,
   ): Promise<ProcessingQueueItem | null> {
     return this.db.getProcessingQueueItemByDepositId(depositId);
   }
 
   async getProcessingQueueItemsByDelegatee(
-    delegatee: string
+    delegatee: string,
   ): Promise<ProcessingQueueItem[]> {
     return this.db.getProcessingQueueItemsByDelegatee(delegatee);
   }
@@ -190,36 +212,43 @@ export class DatabaseWrapper implements IDatabase {
 
   // Transaction Queue methods
   async createTransactionQueueItem(
-    item: Omit<TransactionQueueItem, 'id' | 'created_at' | 'updated_at' | 'attempts'>
+    item: Omit<
+      TransactionQueueItem,
+      'id' | 'created_at' | 'updated_at' | 'attempts'
+    >,
   ): Promise<TransactionQueueItem> {
     return this.db.createTransactionQueueItem(item);
   }
 
   async updateTransactionQueueItem(
     id: string,
-    update: Partial<Omit<TransactionQueueItem, 'id' | 'created_at' | 'updated_at'>>
+    update: Partial<
+      Omit<TransactionQueueItem, 'id' | 'created_at' | 'updated_at'>
+    >,
   ): Promise<void> {
     return this.db.updateTransactionQueueItem(id, update);
   }
 
-  async getTransactionQueueItem(id: string): Promise<TransactionQueueItem | null> {
+  async getTransactionQueueItem(
+    id: string,
+  ): Promise<TransactionQueueItem | null> {
     return this.db.getTransactionQueueItem(id);
   }
 
   async getTransactionQueueItemsByStatus(
-    status: TransactionQueueStatus
+    status: TransactionQueueStatus,
   ): Promise<TransactionQueueItem[]> {
     return this.db.getTransactionQueueItemsByStatus(status);
   }
 
   async getTransactionQueueItemByDepositId(
-    depositId: string
+    depositId: string,
   ): Promise<TransactionQueueItem | null> {
     return this.db.getTransactionQueueItemByDepositId(depositId);
   }
 
   async getTransactionQueueItemsByHash(
-    hash: string
+    hash: string,
   ): Promise<TransactionQueueItem[]> {
     return this.db.getTransactionQueueItemsByHash(hash);
   }

@@ -58,6 +58,7 @@ The queue-based system persists queue state in the database for resilience:
 - **Transaction Queue**: Tracks deposits that have been submitted for execution
 
 Each queue item maintains:
+
 - Current status (pending, processing, completed, failed)
 - Attempt count for retry logic
 - Error information for troubleshooting

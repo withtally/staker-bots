@@ -9,8 +9,6 @@ import { ProfitabilityEngineWrapper } from './profitability/ProfitabilityEngineW
 import { ethers } from 'ethers';
 import fs from 'fs/promises';
 import path from 'path';
-import type { Deposit as DBDeposit } from './database/interfaces/types';
-import type { Deposit as ProfitabilityDeposit } from './profitability/interfaces/types';
 
 // Create component-specific loggers with colors
 const monitorLogger = new ConsoleLogger('info', {
@@ -43,17 +41,7 @@ function createProvider() {
   return new ethers.JsonRpcProvider(CONFIG.monitor.rpcUrl);
 }
 
-// Convert database deposit to profitability deposit
-function convertDeposit(deposit: DBDeposit): ProfitabilityDeposit {
-  return {
-    deposit_id: BigInt(deposit.deposit_id),
-    owner_address: deposit.owner_address,
-    delegatee_address: deposit.delegatee_address,
-    amount: BigInt(deposit.amount),
-    created_at: deposit.created_at,
-    updated_at: deposit.updated_at,
-  };
-}
+// Function removed because it's unused: convertDeposit
 
 async function logError(error: unknown, context: string) {
   const timestamp = new Date().toISOString();
@@ -442,7 +430,8 @@ async function main() {
 
     if (calculatorComponent && profitabilityEngine) {
       // Get the earning power calculator from the wrapper
-      const earningPowerCalculator = calculatorComponent.getEarningPowerCalculator();
+      const earningPowerCalculator =
+        calculatorComponent.getEarningPowerCalculator();
 
       if (earningPowerCalculator) {
         // Set bidirectional references
@@ -452,7 +441,7 @@ async function main() {
         // Verify the connection status
         logger.info('Component connection status:', {
           calculatorHasProfitabilityEngine: true,
-          engineHasCalculator: true
+          engineHasCalculator: true,
         });
       } else {
         logger.warn('Could not get earning power calculator instance');
@@ -465,10 +454,11 @@ async function main() {
       logger.info('Connected profitability engine to executor');
 
       // Verify executor status
-      const executorStatus = await runningComponents.transactionExecutor.getStatus();
+      const executorStatus =
+        await runningComponents.transactionExecutor.getStatus();
       logger.info('Executor connected with status:', {
         isRunning: executorStatus.isRunning,
-        walletBalance: ethers.formatEther(executorStatus.walletBalance)
+        walletBalance: ethers.formatEther(executorStatus.walletBalance),
       });
     }
 
@@ -479,7 +469,7 @@ async function main() {
       queueSize: engineStatus.queueSize,
       delegateeCount: engineStatus.delegateeCount,
       pendingCount: queueStats.pendingCount,
-      processingCount: queueStats.processingCount
+      processingCount: queueStats.processingCount,
     });
 
     // 4. Force initial population of the queue at startup
@@ -495,7 +485,9 @@ async function main() {
         }
       }
 
-      logger.info(`Found ${uniqueDelegatees.size} unique delegatees for initial queue population`);
+      logger.info(
+        `Found ${uniqueDelegatees.size} unique delegatees for initial queue population`,
+      );
 
       // Trigger score events for each delegatee
       let processedCount = 0;
@@ -504,20 +496,24 @@ async function main() {
         const scoreEvent = await database.getLatestScoreEvent(delegatee);
         const score = scoreEvent ? BigInt(scoreEvent.score) : BigInt(0);
 
-        logger.info(`Triggering initial score event for delegatee ${delegatee} with score ${score}`);
+        logger.info(
+          `Triggering initial score event for delegatee ${delegatee} with score ${score}`,
+        );
         await profitabilityEngine.onScoreEvent(delegatee, score);
         processedCount++;
 
         // Add a small delay to avoid overwhelming the system
         if (processedCount % 10 === 0) {
-          logger.info(`Processed ${processedCount}/${uniqueDelegatees.size} delegatees, waiting...`);
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          logger.info(
+            `Processed ${processedCount}/${uniqueDelegatees.size} delegatees, waiting...`,
+          );
+          await new Promise((resolve) => setTimeout(resolve, 1000));
         }
       }
 
       logger.info('Initial queue population complete', {
         processedDelegatees: processedCount,
-        totalDelegatees: uniqueDelegatees.size
+        totalDelegatees: uniqueDelegatees.size,
       });
 
       // Check queue state after population
@@ -527,9 +523,8 @@ async function main() {
         queueSize: afterStatus.queueSize,
         delegateeCount: afterStatus.delegateeCount,
         pendingCount: afterQueueStats.pendingCount,
-        processingCount: afterQueueStats.processingCount
+        processingCount: afterQueueStats.processingCount,
       });
-
     } catch (error) {
       logger.error('Error during initial queue population:', { error });
     }
@@ -560,7 +555,7 @@ async function main() {
               {
                 queueSize: queueStats.totalDeposits,
                 totalDeposits: deposits.length,
-              }
+              },
             );
             return;
           }
@@ -570,7 +565,7 @@ async function main() {
             {
               totalDeposits: deposits.length,
               queueSize: queueStats.totalDeposits,
-            }
+            },
           );
 
           // For each delegatee, trigger a score event to recheck deposits
@@ -582,10 +577,11 @@ async function main() {
           }
 
           for (const delegatee of delegatees) {
-            profitabilityLogger.debug(`Triggering backup check for delegatee ${delegatee}`);
+            profitabilityLogger.debug(
+              `Triggering backup check for delegatee ${delegatee}`,
+            );
             await profitabilityEngine.onScoreEvent(delegatee, BigInt(0));
           }
-
         } catch (error) {
           profitabilityLogger.error('Error in backup profitability check', {
             error,
