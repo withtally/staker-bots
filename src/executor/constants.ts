@@ -12,8 +12,9 @@ export const DEFAULT_EXECUTOR_CONFIG: ExecutorConfig = {
   maxRetries: 3,
   retryDelayMs: 5000,
   transferOutThreshold: ethers.parseEther('0.5'), // 0.5 ETH
-  gasBoostPercentage: 10, // 10%
+  gasBoostPercentage: 30, // 30%
   concurrentTransactions: 3,
+  defaultTipReceiver: '',
 };
 
 export const DEFAULT_RELAYER_EXECUTOR_CONFIG: RelayerExecutorConfig = {
@@ -28,6 +29,7 @@ export const DEFAULT_RELAYER_EXECUTOR_CONFIG: RelayerExecutorConfig = {
   maxRetries: 3,
   retryDelayMs: 5000,
   transferOutThreshold: ethers.parseEther('0.5'), // 0.5 ETH
-  gasBoostPercentage: 10, // 10%
+  gasBoostPercentage: 30, // 30%
   concurrentTransactions: 3,
+  defaultTipReceiver: '',
 };

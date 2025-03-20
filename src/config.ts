@@ -58,8 +58,8 @@ export const CONFIG = {
     },
   },
   profitability: {
-    minProfitMargin: ethers.parseEther('0.001'), // 0.001 tokens minimum profit
-    gasPriceBuffer: 20, // 20% buffer for gas price volatility
+    minProfitMargin: ethers.parseEther('0'), // 0 tokens minimum profit
+    gasPriceBuffer: 50, // 50% buffer for gas price volatility (increased from 20%)
     maxBatchSize: 10,
     defaultTipReceiver: process.env.TIP_RECEIVER_ADDRESS || '',
     rewardTokenAddress: process.env.REWARD_TOKEN_ADDRESS || '',

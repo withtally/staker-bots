@@ -287,7 +287,7 @@ async function runProfitabilityEngine(database: DatabaseWrapper) {
     CONFIG.monitor.stakerAddress,
     profitabilityLogger,
     {
-      minProfitMargin: BigInt(1e13), // 0.00001 ETH
+      minProfitMargin: BigInt(0), // 0 ETH
       gasPriceBuffer: 20, // 20%
       maxBatchSize: 10,
       rewardTokenAddress: CONFIG.profitability.rewardTokenAddress,
@@ -325,7 +325,7 @@ async function runProfitabilityEngine(database: DatabaseWrapper) {
   return engine;
 }
 
-async function runExecutor() {
+async function runExecutor(database: DatabaseWrapper) {
   const provider = createProvider();
 
   // Test provider connection
@@ -369,6 +369,7 @@ async function runExecutor() {
       gasBoostPercentage: 10, // 10%
       concurrentTransactions: 3,
     },
+    database,
   );
 
   await executor.start();
@@ -419,7 +420,7 @@ async function main() {
 
     // Start executor with profitability verification
     logger.info('Starting transaction executor...');
-    runningComponents.transactionExecutor = await runExecutor();
+    runningComponents.transactionExecutor = await runExecutor(database);
 
     // Connect components
     logger.info('Connecting components...');
