@@ -14,6 +14,7 @@ import {
 } from './constants';
 import { ProfitabilityCheck } from '@/profitability/interfaces/types';
 import { IExecutor } from './interfaces/IExecutor';
+import { DatabaseWrapper } from '@/database';
 
 export enum ExecutorType {
   WALLET = 'WALLET',
@@ -28,6 +29,7 @@ export class ExecutorWrapper {
     provider: ethers.Provider,
     type: ExecutorType = ExecutorType.WALLET,
     config: Partial<ExecutorConfig | RelayerExecutorConfig> = {},
+    private readonly db?: DatabaseWrapper, // Database access
   ) {
     if (type === ExecutorType.WALLET) {
       // Create a BaseExecutor with local wallet
@@ -40,7 +42,15 @@ export class ExecutorWrapper {
         },
       };
 
-      this.executor = new BaseExecutor(stakerContract, provider, fullConfig);
+      this.executor = new BaseExecutor(
+        stakerContract.target as string,
+        stakerContract.interface.fragments,
+        provider,
+        fullConfig,
+      );
+      if (db && this.executor.setDatabase) {
+        this.executor.setDatabase(db);
+      }
     } else if (type === ExecutorType.RELAYER) {
       // Create a RelayerExecutor with OpenZeppelin Defender
       const fullConfig: RelayerExecutorConfig = {
@@ -53,6 +63,9 @@ export class ExecutorWrapper {
       };
 
       this.executor = new RelayerExecutor(stakerContract, provider, fullConfig);
+      if (db && this.executor.setDatabase) {
+        this.executor.setDatabase(db);
+      }
     } else {
       throw new Error(`Unsupported executor type: ${type}`);
     }
@@ -90,8 +103,9 @@ export class ExecutorWrapper {
   async queueTransaction(
     depositId: bigint,
     profitability: ProfitabilityCheck,
+    txData?: string,
   ): Promise<QueuedTransaction> {
-    return this.executor.queueTransaction(depositId, profitability);
+    return this.executor.queueTransaction(depositId, profitability, txData);
   }
 
   /**

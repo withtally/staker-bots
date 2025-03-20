@@ -29,6 +29,8 @@ export interface QueuedTransaction {
   executedAt?: Date;
   gasPrice?: bigint;
   gasLimit?: bigint;
+  tx_data?: string;
+  retryCount?: number;
 }
 
 export enum TransactionStatus {
@@ -47,6 +49,7 @@ export interface ExecutorConfig {
   transferOutThreshold: bigint;
   gasBoostPercentage: number;
   concurrentTransactions: number;
+  defaultTipReceiver?: string;
 }
 
 export interface RelayerExecutorConfig extends Omit<ExecutorConfig, 'wallet'> {

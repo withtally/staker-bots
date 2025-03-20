@@ -116,13 +116,6 @@ export class StakerMonitor extends EventEmitter {
           fromBlock + this.config.maxBlockRange - 1,
         );
 
-        this.logger.info('Processing new blocks', {
-          fromBlock,
-          toBlock,
-          currentBlock,
-          blockRange: toBlock - fromBlock + 1,
-        });
-
         await this.processBlockRange(fromBlock, toBlock);
 
         const block = await this.provider.getBlock(toBlock);
@@ -137,11 +130,6 @@ export class StakerMonitor extends EventEmitter {
         });
 
         this.lastProcessedBlock = toBlock;
-        this.logger.info('Blocks processed successfully', {
-          fromBlock,
-          toBlock,
-          blockHash: block.hash,
-        });
       } catch (error) {
         this.logger.error('Error in processing loop', {
           error,
@@ -158,8 +146,6 @@ export class StakerMonitor extends EventEmitter {
     fromBlock: number,
     toBlock: number,
   ): Promise<void> {
-    this.logger.info('Querying events for block range', { fromBlock, toBlock });
-
     const [depositedEvents, withdrawnEvents, alteredEvents] = await Promise.all(
       [
         this.contract.queryFilter(
@@ -179,14 +165,6 @@ export class StakerMonitor extends EventEmitter {
         ),
       ],
     );
-
-    this.logger.info('Found events in block range', {
-      depositedCount: depositedEvents.length,
-      withdrawnCount: withdrawnEvents.length,
-      alteredCount: alteredEvents.length,
-      fromBlock,
-      toBlock,
-    });
 
     // Group events by transaction hash for correlation
     const eventsByTx = new Map<
@@ -231,21 +209,6 @@ export class StakerMonitor extends EventEmitter {
       });
     }
 
-    // Log transaction groups
-    this.logger.info('Transaction groups created:', {
-      totalGroups: eventsByTx.size,
-      groups: Array.from(eventsByTx.entries()).map(([txHash, events]) => ({
-        txHash,
-        hasDeposit: !!events.deposited,
-        hasAltered: !!events.altered,
-        depositId:
-          events.deposited?.args.depositId.toString() ||
-          events.altered?.args.depositId.toString(),
-        blockNumber:
-          events.deposited?.blockNumber || events.altered?.blockNumber,
-      })),
-    });
-
     // If we found any events, fetch and log the full blocks
     const eventBlocks = new Set([
       ...depositedEvents.map((e) => e.blockNumber),
@@ -278,41 +241,6 @@ export class StakerMonitor extends EventEmitter {
         transactions: txs.filter((tx) => tx !== null),
       });
     }
-
-    // Log raw events with transaction details
-    this.logger.info('Raw events found:', {
-      deposited: depositedEvents.map((e) => {
-        const event = e as ethers.EventLog;
-        const args = event.args;
-        return {
-          blockNumber: event.blockNumber,
-          txHash: event.transactionHash,
-          txIndex: event.transactionIndex,
-          args: {
-            owner: args.owner,
-            depositId: args.depositId.toString(),
-            amount: args.amount.toString(),
-            depositBalance: args.depositBalance?.toString(),
-            earningPower: args.earningPower?.toString(),
-          },
-        };
-      }),
-      altered: alteredEvents.map((e) => {
-        const event = e as ethers.EventLog;
-        const args = event.args;
-        return {
-          blockNumber: event.blockNumber,
-          txHash: event.transactionHash,
-          txIndex: event.transactionIndex,
-          args: {
-            depositId: args.depositId.toString(),
-            oldDelegatee: args.oldDelegatee,
-            newDelegatee: args.newDelegatee,
-            earningPower: args.earningPower?.toString(),
-          },
-        };
-      }),
-    });
 
     // Process events by transaction
     for (const [txHash, events] of eventsByTx) {

@@ -292,7 +292,7 @@ export class BaseProfitabilityEngine implements IProfitabilityEngine {
           `Gas estimation succeeded for deposit ${deposit.deposit_id}:`,
           {
             gasEstimate: gasEstimate.toString(),
-            minimumTip: ethers.formatEther(minimumTip),
+            minimumTip: minimumTip.toString(),
             tipReceiver,
           },
         );
@@ -339,53 +339,54 @@ export class BaseProfitabilityEngine implements IProfitabilityEngine {
       const optimalTip = desiredTip > maxTip ? maxTip : desiredTip;
 
       // Calculate expected profit
-      const expectedProfit = optimalTip - baseCostInToken;
+      const expectedProfit =
+        optimalTip > baseCostInToken ? optimalTip - baseCostInToken : BigInt(0); // Ensure we never return negative profit
 
-      // Only proceed if we have enough unclaimed rewards and the operation would be profitable
-      if (requirements.unclaimedRewards < optimalTip) {
-        this.logger.info(
-          `Not enough unclaimed rewards for deposit ${deposit.deposit_id}:`,
-          {
-            unclaimedRewards: ethers.formatEther(requirements.unclaimedRewards),
-            optimalTip: ethers.formatEther(optimalTip),
-          },
-        );
-        return {
-          optimalTip: BigInt(0),
-          expectedProfit: BigInt(0),
-          gasEstimate: BigInt(0),
-        };
-      }
+      // // Only proceed if we have enough unclaimed rewards and the operation would be profitable
+      // if (requirements.unclaimedRewards < optimalTip) {
+      //   this.logger.info(
+      //     `Not enough unclaimed rewards for deposit ${deposit.deposit_id}:`,
+      //     {
+      //       unclaimedRewards: requirements.unclaimedRewards.toString(),
+      //       optimalTip: optimalTip.toString(),
+      //     },
+      //   );
+      //   return {
+      //     optimalTip: BigInt(0),
+      //     expectedProfit: BigInt(0),
+      //     gasEstimate: BigInt(0),
+      //   };
+      // }
 
-      // Ensure we only recommend transactions that would be profitable
-      if (expectedProfit < this.config.minProfitMargin) {
-        this.logger.info(
-          `Transaction would not be profitable for deposit ${deposit.deposit_id}:`,
-          {
-            baseCostInToken: ethers.formatEther(baseCostInToken),
-            optimalTip: ethers.formatEther(optimalTip),
-            expectedProfit: ethers.formatEther(expectedProfit),
-            minProfitMargin: ethers.formatEther(this.config.minProfitMargin),
-          },
-        );
+      // // Ensure we only recommend transactions that would be profitable
+      // if (expectedProfit < this.config.minProfitMargin) {
+      //   this.logger.info(
+      //     `Transaction would not be profitable for deposit ${deposit.deposit_id}:`,
+      //     {
+      //       baseCostInToken: baseCostInToken.toString(),
+      //       optimalTip: optimalTip.toString(),
+      //       expectedProfit: expectedProfit.toString(),
+      //       minProfitMargin: this.config.minProfitMargin.toString(),
+      //     },
+      //   );
 
-        return {
-          optimalTip: BigInt(0),
-          expectedProfit: BigInt(0),
-          gasEstimate: BigInt(0),
-        };
-      }
+      //   return {
+      //     optimalTip: BigInt(0),
+      //     expectedProfit: BigInt(0),
+      //     gasEstimate: BigInt(0),
+      //   };
+      // }
 
-      this.logger.info(
-        `Profitable transaction found for deposit ${deposit.deposit_id}:`,
-        {
-          gasEstimate: gasEstimate.toString(),
-          baseCostInToken: ethers.formatEther(baseCostInToken),
-          optimalTip: ethers.formatEther(optimalTip),
-          expectedProfit: ethers.formatEther(expectedProfit),
-          tipReceiver,
-        },
-      );
+      // this.logger.info(
+      //   `Profitable transaction found for deposit ${deposit.deposit_id}:`,
+      //   {
+      //     gasEstimate: gasEstimate.toString(),
+      //     baseCostInToken: baseCostInToken.toString(),
+      //     optimalTip: optimalTip.toString(),
+      //     expectedProfit: expectedProfit.toString(),
+      //     tipReceiver,
+      //   },
+      // );
 
       return {
         optimalTip,
