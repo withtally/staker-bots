@@ -44,7 +44,7 @@ export class ExecutorWrapper {
 
       this.executor = new BaseExecutor(
         stakerContract.target as string,
-        stakerContract.interface.fragments,
+        stakerContract.interface,
         provider,
         fullConfig,
       );
